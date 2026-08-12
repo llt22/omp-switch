@@ -20,6 +20,10 @@ omp-switch 把这些变成可视化操作：**点一下切换、一键拉取模�
 
 ## 功能特性
 
+![主界面](docs/main.webp)
+
+![添加供应商](docs/modal.webp)
+
 - **供应商管理**：增删改查、启用/停用（即切换）、复制（同网关换 Key 的高频场景）
 - **类型驱动添加**：OpenAI 兼容 / Claude / OpenAI 官方 / Gemini 四种预设，自动预填 Base URL 与 API 协议
 - **拉取模型列表**：自动从 `/v1/models` 拉取（含候选端点回退），复选框勾选添加，已配置模型自动预勾选；编辑已有供应商时直接使用服务端存储的 Key，无需重复输入
@@ -34,7 +38,7 @@ omp-switch 把这些变成可视化操作：**点一下切换、一键拉取模�
 ### 方式一：直接运行（推荐）
 
 ```bash
-git clone https://github.com/<your-name>/omp-switch.git
+git clone https://github.com/llt22/omp-switch.git
 cd omp-switch
 ./start.command   # 或直接运行编译好的二进制（Release 中下载）
 ```
