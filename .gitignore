@@ -1,0 +1,15 @@
+# 依赖与构建产物
+node_modules/
+web/node_modules/
+web/dist/
+
+# 本地数据（含 API Key，绝不提交）
+providers.json
+*.log
+
+# 编译产物
+omp-provider-switcher
+public_html.ts
+
+# 系统文件
+.DS_Store

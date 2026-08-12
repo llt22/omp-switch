@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OMP 供应商配置器</title>
+<style>
+  :root {
+    --canvas: #fafaf9; --card: #ffffff; --border: #e8e6e5; --border2: #d6d3d1;
+    --ink: #0c0a09; --body: #57534e; --muted: #a8a29e; --faint: #f5f5f4;
+    --cyan: #3ba6f1; --cyan-edge: #3398e1; --sky: #dbeeff;
+    --green: #16a34a; --green-bg: #f0fdf4; --red: #dc2626; --red-bg: #fef2f2;
+    --amber: #d97706; --amber-bg: #fffbeb;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: var(--canvas); color: var(--ink); font-family: -apple-system, BlinkMacSystemFont, "Inter", "PingFang SC", sans-serif; font-size: 14px; line-height: 1.6; -webkit-font-smoothing: antialiased; }
+
+  /* Layout */
+  .wrap { max-width: 960px; margin: 0 auto; padding: 32px 24px 100px; }
+  header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 28px; }
+  .brand { font-size: 18px; font-weight: 600; letter-spacing: -0.02em; color: var(--ink); }
+  .brand span { color: var(--cyan-edge); }
+  .header-actions { display: flex; gap: 8px; align-items: center; }
+
+  /* Status pill */
+  .status { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--body); background: var(--card); border: 1px solid var(--border); border-radius: 999px; padding: 5px 14px; }
+  .status .dot { width: 7px; height: 7px; border-radius: 50%; }
+  .status.on .dot { background: var(--green); }
+  .status.off .dot { background: var(--border2); }
+
+  /* Buttons */
+  button, .btn { font-family: inherit; font-size: 13px; font-weight: 500; border-radius: 8px; padding: 7px 16px; border: 1px solid var(--border); background: var(--card); color: var(--ink); cursor: pointer; transition: all .12s; display: inline-flex; align-items: center; gap: 5px; }
+  button:hover { border-color: var(--border2); background: var(--faint); }
+  .btn-primary { background: var(--cyan); border-color: var(--cyan); color: #fff; }
+  .btn-primary:hover { background: var(--cyan-edge); border-color: var(--cyan-edge); }
+  .btn-ghost { border-color: transparent; background: transparent; color: var(--body); }
+  .btn-ghost:hover { background: var(--faint); }
+  .btn-danger { color: var(--red); }
+  .btn-sm { padding: 4px 10px; font-size: 12px; }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+
+  /* Section */
+  .section { margin-bottom: 24px; }
+  .section-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+  .section-title { font-size: 13px; font-weight: 600; color: var(--body); text-transform: uppercase; letter-spacing: 0.04em; }
+
+  /* Provider cards */
+  .provider-list { display: flex; flex-direction: column; gap: 10px; }
+  .pcard { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; display: flex; align-items: flex-start; gap: 14px; transition: border-color .12s; }
+  .pcard:hover { border-color: var(--border2); }
+  .pcard.active { border-left: 3px solid var(--green); }
+  .pcard-info { flex: 1; min-width: 0; }
+  .pcard-top { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+  .pcard-name { font-weight: 600; font-size: 15px; letter-spacing: -0.01em; }
+  .tag { font-size: 11px; font-weight: 500; padding: 1px 8px; border-radius: 999px; }
+  .tag-type { color: var(--cyan-edge); background: var(--sky); }
+  .tag-on { color: var(--green); background: var(--green-bg); }
+  .tag-off { color: var(--amber); background: var(--amber-bg); }
+  .pcard-meta { color: var(--muted); font-size: 12px; margin-bottom: 6px; }
+  .pcard-meta code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; }
+  .pcard-models { display: flex; flex-wrap: wrap; gap: 4px; }
+  .mchip { font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--faint); border: 1px solid var(--border); border-radius: 4px; padding: 1px 6px; color: var(--body); }
+  .mchip.r { border-color: rgba(51,152,225,.3); color: var(--cyan-edge); }
+  .pcard-actions { display: flex; flex-direction: column; gap: 4px; flex-shrink: 0; padding-top: 2px; }
+
+  /* More dropdown */
+  .dropdown { position: relative; }
+  .dropdown-menu { display: none; position: absolute; right: 0; top: 100%; margin-top: 4px; background: var(--card); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,.08); z-index: 20; min-width: 120px; padding: 4px; }
+  .dropdown.open .dropdown-menu { display: block; }
+  .dropdown-item { display: block; width: 100%; text-align: left; padding: 6px 12px; font-size: 13px; border: none; background: none; cursor: pointer; border-radius: 6px; color: var(--ink); }
+  .dropdown-item:hover { background: var(--faint); }
+  .dropdown-item.danger { color: var(--red); }
+
+  /* Collapsible backup */
+  .collapse-trigger { cursor: pointer; user-select: none; }
+  .collapse-body { overflow: hidden; max-height: 0; transition: max-height .2s; }
+  .collapse-body.open { max-height: 600px; }
+  .backup-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; font-size: 12px; color: var(--body); border-bottom: 1px solid var(--faint); }
+  .backup-row:last-child { border-bottom: none; }
+
+  /* Modal */
+  .modal-bg { position: fixed; inset: 0; background: rgba(12,10,9,.35); display: none; align-items: center; justify-content: center; z-index: 50; }
+  .modal-bg.show { display: flex; }
+  .modal { background: var(--card); border-radius: 14px; width: min(580px, 94vw); max-height: 88vh; display: flex; flex-direction: column; box-shadow: 0 20px 60px rgba(12,10,9,.15); }
+  .modal.lg { width: min(680px, 94vw); }
+  .modal-head { padding: 18px 22px 14px; display: flex; justify-content: space-between; align-items: center; }
+  .modal-head h3 { font-size: 16px; font-weight: 600; letter-spacing: -0.015em; }
+  .modal-body { padding: 0 22px 18px; overflow-y: auto; }
+  .modal-foot { padding: 14px 22px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 8px; }
+
+  /* Form */
+  .field { margin-bottom: 14px; }
+  .field label { font-size: 12px; font-weight: 500; color: var(--body); display: block; margin-bottom: 4px; }
+  .field label .req { color: var(--red); }
+  .field-hint { font-size: 11px; color: var(--muted); margin-top: 3px; }
+  input[type=text], input[type=password], input[type=number], select, textarea { width: 100%; background: var(--card); border: 1px solid var(--border); color: var(--ink); border-radius: 8px; padding: 8px 12px; font-size: 13px; font-family: inherit; transition: border-color .12s; }
+  input:focus, select:focus, textarea:focus { outline: none; border-color: var(--cyan); box-shadow: 0 0 0 3px rgba(59,166,241,.1); }
+  textarea { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; resize: vertical; }
+  .row { display: grid; gap: 12px; }
+  .row-2 { grid-template-columns: 1fr 1fr; }
+  .row-3 { grid-template-columns: 1fr 1fr 1fr; }
+
+  /* Type selector */
+  .type-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 18px; }
+  .type-opt { border: 1px solid var(--border); border-radius: 10px; padding: 12px 8px; cursor: pointer; text-align: center; transition: all .12s; background: var(--card); }
+  .type-opt:hover { border-color: var(--cyan-edge); }
+  .type-opt.sel { border-color: var(--cyan); background: var(--sky); }
+  .type-opt .ico { font-size: 22px; margin-bottom: 4px; }
+  .type-opt .name { font-weight: 600; font-size: 13px; }
+  .type-opt .desc { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+  /* Model table */
+  .mtable { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .mtable th { text-align: left; color: var(--muted); font-weight: 500; font-size: 11px; text-transform: uppercase; letter-spacing: .03em; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+  .mtable td { padding: 8px; border-bottom: 1px solid var(--faint); }
+  .mtable tr:last-child td { border-bottom: none; }
+  .mtable .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+
+  /* Advanced toggle */
+  .adv-toggle { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); cursor: pointer; user-select: none; margin-top: 12px; margin-bottom: 8px; }
+  .adv-toggle:hover { color: var(--body); }
+  .adv-toggle .arrow { transition: transform .15s; font-size: 10px; }
+  .adv-toggle.open .arrow { transform: rotate(90deg); }
+  .adv-body { display: none; padding-left: 2px; }
+  .adv-body.show { display: block; }
+
+  /* Fetch models pick list */
+  .pick-item { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 13px; }
+  .pick-item input { width: auto; accent-color: var(--cyan); }
+  .pick-bar { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; margin-bottom: 4px; border-bottom: 1px solid var(--border); }
+
+  /* Test result */
+  .test-box { background: var(--faint); border: 1px solid var(--border); border-radius: 8px; padding: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; white-space: pre-wrap; margin-top: 12px; max-height: 180px; overflow-y: auto; }
+  .test-box.ok { border-color: rgba(22,163,74,.3); background: var(--green-bg); }
+  .test-box.fail { border-color: rgba(220,38,38,.3); background: var(--red-bg); }
+
+  /* Divider */
+  .divider { border-top: 1px solid var(--border); margin: 14px 0; }
+
+  /* Toast */
+  #toast { position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%); background: var(--ink); color: #fff; border-radius: 999px; padding: 10px 22px; font-size: 13px; display: none; z-index: 99; box-shadow: 0 8px 24px rgba(0,0,0,.18); }
+  #toast.show { display: block; }
+
+  .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--border2); border-top-color: var(--cyan); border-radius: 50%; animation: spin .6s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .empty { color: var(--muted); text-align: center; padding: 28px 0; font-size: 13px; }
+  .check-row { display: flex; align-items: center; gap: 8px; }
+  .check-row input { width: auto; accent-color: var(--cyan); }
+  .check-row label { margin: 0; font-size: 13px; color: var(--body); }
+  .effort-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .effort-grid .ef-item { display: flex; align-items: center; gap: 4px; font-size: 12px; }
+  .effort-grid .ef-item label { min-width: 44px; color: var(--muted); margin: 0; }
+  .effort-grid .ef-item input { width: 100%; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">OMP <span>Provider</span></div>
+    <div class="header-actions">
+      <div class="status off" id="status-pill"><span class="dot"></span><span id="status-text">加载中</span></div>
+      <button class="btn-primary" onclick="applyAll()">应用到 omp</button>
+      <div class="dropdown" id="more-menu">
+        <button class="btn-ghost btn-sm" onclick="toggleDropdown('more-menu')">···</button>
+        <div class="dropdown-menu">
+          <button class="dropdown-item" onclick="importFromCurrent()">从当前配置导入</button>
+          <button class="dropdown-item" onclick="exportCfg()">导出 YAML</button>
+          <button class="dropdown-item" onclick="loadState()">刷新</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <div class="section">
+    <div class="section-head">
+      <span class="section-title">供应商</span>
+      <button class="btn-primary btn-sm" onclick="openProviderModal()">＋ 添加供应商</button>
+    </div>
+    <div class="provider-list" id="provider-list"><span class="empty">加载中…</span></div>
+  </div>
+
+  <div class="section">
+    <div class="section-head collapse-trigger" onclick="toggleBackups()">
+      <span class="section-title" id="backup-title">▸ 历史备份</span>
+    </div>
+    <div class="collapse-body" id="backup-body">
+      <div id="backup-list"></div>
+    </div>
+  </div>
+</div>
+
+<!-- 添加/编辑供应商 -->
+<div class="modal-bg" id="provider-modal">
+  <div class="modal lg">
+    <div class="modal-head"><h3 id="pm-title">添加供应商</h3><button class="btn-ghost btn-sm" onclick="closeModal('provider-modal')">✕</button></div>
+    <div class="modal-body">
+      <div class="type-grid" id="type-grid"></div>
+      <div class="row row-2 field">
+        <div><label>供应商名称 <span class="req">*</span></label><input type="text" id="p-name" placeholder="例如：我的 OpenAI 网关" oninput="onNameInput()"></div>
+        <div><label>Base URL <span class="req">*</span></label><input type="text" id="p-baseurl" placeholder="https://api.example.com/v1" spellcheck="false"></div>
+      </div>
+      <div class="field">
+        <label>API Key</label>
+        <input type="password" id="p-apikey" placeholder="sk-..." spellcheck="false" autocomplete="off">
+      </div>
+      <div class="divider"></div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <label style="margin:0;font-weight:600;font-size:13px">模型</label>
+        <div style="display:flex;gap:6px">
+          <button class="btn-sm" id="btn-fetch" onclick="fetchModels()">↻ 拉取模型列表</button>
+          <button class="btn-sm btn-ghost" onclick="addModelRow()">＋ 手动添加</button>
+        </div>
+      </div>
+      <table class="mtable" id="models-table">
+        <thead><tr><th>模型 ID</th><th style="width:80px">上下文</th><th style="width:80px">MaxTokens</th><th style="width:50px">思考</th><th style="width:100px"></th></tr></thead>
+        <tbody id="models-tbody"></tbody>
+      </table>
+      <div id="pm-empty" class="empty" style="display:none">拉取模型列表或手动添加</div>
+
+      <div class="adv-toggle" id="adv-prov-toggle" onclick="toggleAdv('adv-prov')"><span class="arrow">▸</span> 高级设置</div>
+      <div class="adv-body" id="adv-prov">
+        <div class="row row-2 field">
+          <div><label>Provider ID <span style="color:var(--muted);font-weight:400">(自动生成)</span></label><input type="text" id="p-id" spellcheck="false" placeholder="auto"></div>
+          <div><label>API 协议</label><select id="p-api"></select></div>
+        </div>
+        <div class="check-row field"><input type="checkbox" id="p-authheader" checked><label for="p-authheader">注入 Authorization: Bearer 头</label></div>
+        <div class="field">
+          <label>自定义 Headers <span style="color:var(--muted);font-weight:400">(JSON)</span></label>
+          <textarea id="p-headers" rows="2" placeholder='{"X-Custom":"value"}'></textarea>
+        </div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <span style="flex:1;font-size:12px;color:var(--red)" id="pm-error"></span>
+      <button onclick="closeModal('provider-modal')">取消</button>
+      <button class="btn-primary" onclick="saveProvider()">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- 模型编辑 -->
+<div class="modal-bg" id="model-modal">
+  <div class="modal">
+    <div class="modal-head"><h3>编辑模型</h3><button class="btn-ghost btn-sm" onclick="closeModal('model-modal')">✕</button></div>
+    <div class="modal-body">
+      <div class="row row-2 field">
+        <div><label>模型 ID <span class="req">*</span></label><input type="text" id="m-id" spellcheck="false"></div>
+        <div><label>显示名称</label><input type="text" id="m-name"></div>
+      </div>
+      <div class="row row-3 field">
+        <div><label>上下文窗口</label><input type="number" id="m-ctx" placeholder="250000"></div>
+        <div><label>最大输出</label><input type="number" id="m-max" placeholder="128000"></div>
+        <div><label>输入类型</label><select id="m-input"><option value="text">文本</option><option value="text,image">文本 + 图片</option></select></div>
+      </div>
+      <div class="check-row field"><input type="checkbox" id="m-reasoning"><label for="m-reasoning">启用思考 (reasoning)</label></div>
+
+      <div class="divider"></div>
+      <div class="field"><label style="font-weight:600;font-size:13px;margin-bottom:8px">思考设置</label></div>
+      <div class="row row-3 field">
+        <div><label>模式</label><select id="m-think-mode"><option value="">默认</option><option value="effort">effort</option><option value="off">off</option></select></div>
+        <div><label>最低级别</label><select id="m-think-min"><option value="">-</option><option>low</option><option>medium</option><option>high</option><option>xhigh</option><option>max</option></select></div>
+        <div><label>最高级别</label><select id="m-think-max"><option value="">-</option><option>low</option><option>medium</option><option>high</option><option>xhigh</option><option>max</option></select></div>
+      </div>
+      <div class="field">
+        <label>级别映射 <span style="color:var(--muted);font-weight:400">供应商对级别叫法不同时才填（如 GLM 的 minimal → none），大多数供应商留空即可</span></label>
+        <div class="effort-grid" id="effort-map"></div>
+      </div>
+
+      <div class="adv-toggle" id="adv-compat-toggle" onclick="toggleAdv('adv-compat')"><span class="arrow">▸</span> 高级兼容 (compat)</div>
+      <div class="adv-body" id="adv-compat">
+        <div class="row row-3 field">
+          <div><label>思考格式</label><select id="m-tformat"><option value="openai">openai</option><option value="openrouter">openrouter</option><option value="zai">zai</option><option value="qwen">qwen</option></select></div>
+          <div><label>推理字段</label><select id="m-rfield"><option value="reasoning_content">reasoning_content</option><option value="reasoning">reasoning</option><option value="reasoning_text">reasoning_text</option></select></div>
+          <div><label>Token 字段</label><select id="m-mtfield"><option value="">自动</option><option value="max_tokens">max_tokens</option><option value="max_completion_tokens">max_completion_tokens</option></select></div>
+        </div>
+        <div class="check-row field"><input type="checkbox" id="m-seffort"><label for="m-seffort">supportsReasoningEffort</label></div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button onclick="closeModal('model-modal')">取消</button>
+      <button class="btn-primary" onclick="saveModel()">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- 拉取模型 -->
+<div class="modal-bg" id="fetch-modal">
+  <div class="modal">
+    <div class="modal-head"><h3>选择模型</h3><button class="btn-ghost btn-sm" onclick="closeModal('fetch-modal')">✕</button></div>
+    <div class="modal-body" id="fetch-body"><span class="spinner"></span> 请求中…</div>
+    <div class="modal-foot">
+      <span style="flex:1;font-size:12px;color:var(--cyan-edge)" id="fetch-count"></span>
+      <button onclick="closeModal('fetch-modal')">取消</button>
+      <button class="btn-primary" onclick="addPickedModels()">添加选中</button>
+    </div>
+  </div>
+</div>
+
+<!-- 测试 -->
+<div class="modal-bg" id="test-modal">
+  <div class="modal">
+    <div class="modal-head"><h3>连通性测试</h3><button class="btn-ghost btn-sm" onclick="closeModal('test-modal')">✕</button></div>
+    <div class="modal-body">
+      <div class="row row-3" style="align-items:flex-end;gap:8px">
+        <div class="field"><label>模型</label><select id="test-model"></select></div>
+        <div class="field"><label>思考级别</label><select id="test-effort"><option value="low">low</option><option value="medium" selected>medium</option><option value="high">high</option></select></div>
+        <button class="btn-primary" id="btn-test-run" onclick="runTest()" style="margin-bottom:14px">测试</button>
+      </div>
+      <div class="test-box" id="test-result" style="display:none"></div>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+let state = {};
+let editingId = null;
+let editingModelIdx = null;
+let draft = { type: 'openai-compatible', models: [], headers: {} };
+let fetchedPicked = new Set();
+
+const TYPES = [
+  { type: 'openai-compatible', icon: '⚙️', name: 'OpenAI 兼容', desc: '通用网关', api: 'openai-completions', baseUrl: '', auth: true },
+  { type: 'anthropic', icon: '✳️', name: 'Claude', desc: 'Anthropic', api: 'anthropic-messages', baseUrl: 'https://api.anthropic.com', auth: false },
+  { type: 'openai', icon: '◉', name: 'OpenAI', desc: '官方', api: 'openai-completions', baseUrl: 'https://api.openai.com/v1', auth: true },
+  { type: 'gemini', icon: '✦', name: 'Gemini', desc: 'Google', api: 'google-generative-ai', baseUrl: 'https://generativelanguage.googleapis.com/v1beta', auth: false },
+];
+
+async function rpc(p, m='GET', b) { return (await fetch(p, { method: m, headers: b ? {'Content-Type':'application/json'} : undefined, body: b ? JSON.stringify(b) : undefined })).json(); }
+function toast(msg) { const t = document.getElementById('toast'); t.textContent = msg; t.className = 'show'; clearTimeout(t._t); t._t = setTimeout(() => t.className = '', 2600); }
+function esc(s) { return String(s??'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function closeModal(id) { document.getElementById(id).classList.remove('show'); }
+function openModal(id) { document.getElementById(id).classList.add('show'); }
+
+function toggleDropdown(id) {
+  const el = document.getElementById(id);
+  el.classList.toggle('open');
+  const close = (e) => { if (!el.contains(e.target)) { el.classList.remove('open'); document.removeEventListener('click', close); } };
+  setTimeout(() => document.addEventListener('click', close), 0);
+}
+function toggleAdv(id) {
+  const body = document.getElementById(id);
+  const toggle = document.getElementById(id + '-toggle');
+  body.classList.toggle('show');
+  toggle.classList.toggle('open');
+}
+function toggleBackups() {
+  document.getElementById('backup-body').classList.toggle('open');
+  const t = document.getElementById('backup-title');
+  t.textContent = t.textContent.startsWith('▸') ? t.textContent.replace('▸','▾') : t.textContent.replace('▾','▸');
+}
+
+async function loadState() {
+  state = await rpc('/api/state');
+  const cur = state.current;
+  const pill = document.getElementById('status-pill');
+  const txt = document.getElementById('status-text');
+  if (cur?.exists && cur.enabledCount > 0) {
+    pill.className = 'status on'; txt.textContent = `${cur.enabledCount} 个供应商生效中`;
+  } else { pill.className = 'status off'; txt.textContent = '未应用'; }
+  renderProviders();
+  renderBackups();
+}
+
+function renderProviders() {
+  const el = document.getElementById('provider-list');
+  const curIds = new Set((state.current?.providers ?? []).map(p => p.id));
+  if (!state.providers?.length) { el.innerHTML = '<div class="empty">还没有供应商</div>'; return; }
+  const TL = { 'openai-compatible': 'OpenAI 兼容', 'anthropic': 'Claude', 'openai': 'OpenAI', 'gemini': 'Gemini' };
+  el.innerHTML = state.providers.map(p => {
+    const live = curIds.has(p.id);
+    const chips = p.models.slice(0, 3).map(m => `<span class="mchip ${m.reasoning?'r':''}">${esc(m.id)}</span>`).join('');
+    const more = p.models.length > 3 ? `<span class="mchip">+${p.models.length - 3}</span>` : '';
+    return `<div class="pcard ${live ? 'active' : ''}">
+      <div class="pcard-info">
+        <div class="pcard-top">
+          <span class="pcard-name">${esc(p.name)}</span>
+          <span class="tag tag-type">${TL[p.type] ?? p.type}</span>
+          ${live ? '<span class="tag tag-on">生效</span>' : ''}
+          ${!p.enabled ? '<span class="tag tag-off">已停用</span>' : ''}
+        </div>
+        <div class="pcard-meta"><code>${esc(p.baseUrl)}</code> · ${p.models.length} 个模型 · key: <code>${esc(p.apiKeyMasked || '—')}</code></div>
+        <div class="pcard-models">${chips}${more}</div>
+      </div>
+      <div class="pcard-actions">
+        <button class="btn-sm ${p.enabled ? 'btn-ghost' : 'btn-primary'}" onclick="toggleEnabled('${p.id}')">${p.enabled ? '停用' : '启用'}</button>
+        <button class="btn-sm" onclick="openProviderModal('${p.id}')">编辑</button>
+        <button class="btn-sm btn-ghost" onclick="openTest('${p.id}')">测试</button>
+        <button class="btn-sm btn-ghost btn-danger" onclick="deleteProvider('${p.id}')">删除</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderBackups() {
+  const el = document.getElementById('backup-list');
+  const b = state.backups ?? [];
+  document.getElementById('backup-title').textContent = `▸ 历史备份 (${b.length})`;
+  if (!b.length) { el.innerHTML = '<div class="empty">自动备份将在应用配置时生成</div>'; return; }
+  el.innerHTML = b.slice(0, 5).map(x => {
+    const ago = Math.round((Date.now() - x.mtime) / 60000);
+    const t = ago < 60 ? `${ago} 分钟前` : ago < 1440 ? `${Math.round(ago/60)} 小时前` : `${Math.round(ago/1440)} 天前`;
+    return `<div class="backup-row"><span>${t} · ${(x.size/1024).toFixed(1)}KB</span><button class="btn-sm btn-ghost" onclick="restoreBackup('${x.name}')">恢复</button></div>`;
+  }).join('') + (b.length > 5 ? `<div style="font-size:11px;color:var(--muted);padding:4px 0">还有 ${b.length-5} 条…</div>` : '');
+}
+
+async function toggleEnabled(id) { const p = state.providers.find(x => x.id === id); await rpc('/api/providers', 'POST', { ...p, enabled: !p.enabled, apiKey: undefined }); toast(p.enabled ? '已停用' : '已启用'); await loadState(); }
+async function deleteProvider(id) { if (!confirm('确定删除？')) return; await rpc('/api/providers/' + id, 'DELETE'); toast('已删除'); await loadState(); }
+async function applyAll() { const r = await rpc('/api/apply', 'POST'); if (r.ok) { toast('已写入 models.yml'); await loadState(); } else toast(r.error || '失败'); }
+async function restoreBackup(n) { if (!confirm('恢复此备份？')) return; const r = await rpc('/api/restore', 'POST', { name: n }); if (r.ok) { toast('已恢复'); await loadState(); } }
+async function importFromCurrent() { const r = await rpc('/api/import', 'POST', { yaml: state.current?.raw }); if (r.ok) { toast('已导入'); await loadState(); } else toast(r.error || '失败'); }
+async function exportCfg() { const r = await rpc('/api/export'); if (!r.ok) return; const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([r.yaml], {type:'text/yaml'})); a.download = 'omp-models.yml'; a.click(); }
+
+// --- Provider modal ---
+function renderTypeGrid() {
+  document.getElementById('type-grid').innerHTML = TYPES.map(t => `
+    <div class="type-opt ${draft.type === t.type ? 'sel' : ''}" onclick="pickType('${t.type}')">
+      <div class="ico">${t.icon}</div><div class="name">${t.name}</div><div class="desc">${t.desc}</div>
+    </div>`).join('');
+}
+function pickType(type) {
+  draft.type = type;
+  const d = TYPES.find(t => t.type === type);
+  if (!editingId) {
+    document.getElementById('p-baseurl').value = d.baseUrl;
+    document.getElementById('p-api').value = d.api;
+    document.getElementById('p-authheader').checked = d.auth;
+  }
+  renderTypeGrid();
+}
+function onNameInput() {
+  if (editingId) return;
+  const v = document.getElementById('p-name').value.trim().toLowerCase();
+  document.getElementById('p-id').value = v.replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || '';
+}
+
+function renderModels() {
+  const tb = document.getElementById('models-tbody');
+  const empty = document.getElementById('pm-empty');
+  if (!draft.models.length) { tb.innerHTML = ''; empty.style.display = 'block'; return; }
+  empty.style.display = 'none';
+  tb.innerHTML = draft.models.map((m, i) => `<tr>
+    <td class="mono">${esc(m.id)}</td>
+    <td>${m.contextWindow ? (m.contextWindow/1000)+'K' : '—'}</td>
+    <td>${m.maxTokens ? (m.maxTokens/1000)+'K' : '—'}</td>
+    <td>${m.reasoning ? '✓' : '—'}</td>
+    <td style="text-align:right;white-space:nowrap"><button class="btn-sm btn-ghost" onclick="openModelModal(${i})">编辑</button><button class="btn-sm btn-ghost btn-danger" onclick="rmModel(${i})">✕</button></td>
+  </tr>`).join('');
+}
+function rmModel(i) { draft.models.splice(i, 1); renderModels(); }
+function addModelRow() {
+  draft.models.push({ id: '', reasoning: true, contextWindow: 250000, maxTokens: 128000,
+    thinking: { mode: 'effort', minLevel: 'low', maxLevel: 'high' },
+    compat: { supportsReasoningEffort: true, maxTokensField: 'max_completion_tokens' } });
+  openModelModal(draft.models.length - 1);
+}
+
+function openProviderModal(id) {
+  editingId = id ?? null;
+  document.getElementById('pm-title').textContent = id ? '编辑供应商' : '添加供应商';
+  const p = id ? state.providers.find(x => x.id === id) : null;
+  draft = p ? { type: p.type, models: JSON.parse(JSON.stringify(p.models)), headers: p.headers ?? {} }
+    : { type: 'openai-compatible', models: [], headers: {} };
+  renderTypeGrid();
+  const sel = document.getElementById('p-api');
+  sel.innerHTML = Object.entries(state.apiOptions ?? {}).map(([k, v]) => `<option value="${k}">${esc(v.label)}</option>`).join('');
+  document.getElementById('p-name').value = p?.name ?? '';
+  document.getElementById('p-id').value = p?.id ?? '';
+  document.getElementById('p-baseurl').value = p?.baseUrl ?? TYPES.find(t => t.type === draft.type).baseUrl;
+  document.getElementById('p-apikey').value = '';
+  document.getElementById('p-apikey').placeholder = p?.apiKeyMasked ? `${p.apiKeyMasked}（留空不改）` : 'sk-...';
+  document.getElementById('p-authheader').checked = p?.authHeader ?? TYPES.find(t => t.type === draft.type).auth;
+  sel.value = p?.api ?? TYPES.find(t => t.type === draft.type).api;
+  document.getElementById('p-headers').value = (p?.headers && Object.keys(p.headers).length) ? JSON.stringify(p.headers, null, 2) : '';
+  document.getElementById('pm-error').textContent = '';
+  // collapse advanced
+  document.getElementById('adv-prov').classList.remove('show');
+  document.getElementById('adv-prov-toggle').classList.remove('open');
+  renderModels();
+  openModal('provider-modal');
+}
+
+async function saveProvider() {
+  const id = document.getElementById('p-id').value.trim() || document.getElementById('p-name').value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  let headers = {};
+  try { const v = document.getElementById('p-headers').value.trim(); if (v) headers = JSON.parse(v); } catch { document.getElementById('pm-error').textContent = 'Headers JSON 格式错误'; return; }
+  const payload = {
+    id, name: document.getElementById('p-name').value.trim(),
+    type: draft.type, api: document.getElementById('p-api').value,
+    baseUrl: document.getElementById('p-baseurl').value.trim(),
+    apiKey: document.getElementById('p-apikey').value.trim() || undefined,
+    authHeader: document.getElementById('p-authheader').checked,
+    headers, models: draft.models, enabled: true,
+  };
+  const r = await rpc('/api/providers', 'POST', payload);
+  if (r.ok) { toast('已保存'); closeModal('provider-modal'); await loadState(); }
+  else document.getElementById('pm-error').textContent = r.error || '保存失败';
+}
+
+// --- Fetch models ---
+async function fetchModels() {
+  const baseUrl = document.getElementById('p-baseurl').value.trim();
+  const apiKey = document.getElementById('p-apikey').value.trim();
+  const api = document.getElementById('p-api').value;
+  if (!baseUrl) { toast('请先填写 Base URL'); return; }
+  openModal('fetch-modal');
+  document.getElementById('fetch-body').innerHTML = '<span class="spinner"></span> 请求模型列表…';
+  document.getElementById('fetch-count').textContent = '';
+  const r = await rpc('/api/fetch-models', 'POST', { baseUrl, apiKey, api });
+  if (!r.ok) { document.getElementById('fetch-body').innerHTML = `<div class="test-box fail">${esc(r.error || '拉取失败')}</div>`; return; }
+  const existing = new Set(draft.models.map(m => m.id));
+  fetchedPicked = new Set(r.models.filter(m => existing.has(m)));
+  renderPicks(r.models);
+}
+function renderPicks(models) {
+  const all = fetchedPicked.size === models.length;
+  document.getElementById('fetch-body').innerHTML = `
+    <div class="pick-bar"><div class="pick-item"><input type="checkbox" id="pick-all" ${all?'checked':''} onchange="pickAll(this.checked)"><label for="pick-all">全选 (${models.length})</label></div></div>
+    ${models.map(m => `<div class="pick-item"><input type="checkbox" data-m="${esc(m)}" ${fetchedPicked.has(m)?'checked':''} onchange="pickOne('${esc(m)}',this.checked)"><span class="mono" style="font-size:12px">${esc(m)}</span></div>`).join('')}`;
+  document.getElementById('fetch-count').textContent = `已选 ${fetchedPicked.size}`;
+  window._fetchModels = models;
+}
+function pickOne(m, on) { on ? fetchedPicked.add(m) : fetchedPicked.delete(m); document.getElementById('fetch-count').textContent = `已选 ${fetchedPicked.size}`; }
+function pickAll(on) { fetchedPicked.clear(); if (on) (window._fetchModels||[]).forEach(m => fetchedPicked.add(m)); renderPicks(window._fetchModels||[]); }
+function addPickedModels() {
+  for (const m of fetchedPicked) {
+    if (!draft.models.some(x => x.id === m)) {
+      draft.models.push({ id: m, reasoning: true, contextWindow: 250000, maxTokens: 128000,
+        thinking: { mode: 'effort', minLevel: 'low', maxLevel: 'high' },
+        compat: { supportsReasoningEffort: true, maxTokensField: 'max_completion_tokens' } });
+    }
+  }
+  toast(`已添加 ${fetchedPicked.size} 个`);
+  closeModal('fetch-modal');
+  renderModels();
+}
+
+// --- Model modal ---
+function openModelModal(i) {
+  editingModelIdx = i;
+  const m = draft.models[i];
+  document.getElementById('m-id').value = m.id ?? '';
+  document.getElementById('m-name').value = m.name ?? '';
+  document.getElementById('m-ctx').value = m.contextWindow ?? '';
+  document.getElementById('m-max').value = m.maxTokens ?? '';
+  document.getElementById('m-input').value = (m.input ?? ['text']).join(',');
+  document.getElementById('m-reasoning').checked = !!m.reasoning;
+  document.getElementById('m-think-mode').value = m.thinking?.mode ?? '';
+  document.getElementById('m-think-min').value = m.thinking?.minLevel ?? '';
+  document.getElementById('m-think-max').value = m.thinking?.maxLevel ?? '';
+  document.getElementById('m-tformat').value = m.compat?.thinkingFormat ?? 'openai';
+  document.getElementById('m-rfield').value = m.compat?.reasoningContentField ?? 'reasoning_content';
+  document.getElementById('m-mtfield').value = m.compat?.maxTokensField ?? '';
+  document.getElementById('m-seffort').checked = !!m.compat?.supportsReasoningEffort;
+  const map = m.compat?.reasoningEffortMap ?? {};
+  document.getElementById('effort-map').innerHTML = ['minimal','low','medium','high','xhigh','max'].map(lv => `<div class="ef-item"><label>${lv}</label><input type="text" value="${esc(map[lv]??'')}" data-lv="${lv}" placeholder="—"></div>`).join('');
+  // collapse both
+  document.getElementById('adv-compat').classList.remove('show');
+  document.getElementById('adv-compat-toggle').classList.remove('open');
+  openModal('model-modal');
+}
+function saveModel() {
+  const map = {};
+  document.querySelectorAll('#effort-map input[data-lv]').forEach(el => { if (el.value.trim()) map[el.dataset.lv] = el.value.trim(); });
+  const m = {
+    id: document.getElementById('m-id').value.trim(),
+    name: document.getElementById('m-name').value.trim() || undefined,
+    contextWindow: Number(document.getElementById('m-ctx').value) || undefined,
+    maxTokens: Number(document.getElementById('m-max').value) || undefined,
+    input: document.getElementById('m-input').value.split(',').filter(Boolean),
+    reasoning: document.getElementById('m-reasoning').checked || undefined,
+    thinking: { mode: document.getElementById('m-think-mode').value || undefined, minLevel: document.getElementById('m-think-min').value || undefined, maxLevel: document.getElementById('m-think-max').value || undefined },
+    compat: Object.fromEntries(Object.entries({
+      supportsReasoningEffort: document.getElementById('m-seffort').checked || undefined,
+      thinkingFormat: document.getElementById('m-tformat').value,
+      reasoningContentField: document.getElementById('m-rfield').value,
+      maxTokensField: document.getElementById('m-mtfield').value || undefined,
+      reasoningEffortMap: Object.keys(map).length ? map : undefined,
+    }).filter(([,v]) => v !== undefined)),
+  };
+  if (!m.id) { toast('模型 ID 必填'); return; }
+  draft.models[editingModelIdx] = m;
+  closeModal('model-modal');
+  renderModels();
+}
+
+// --- Test ---
+function openTest(id) {
+  const p = state.providers.find(x => x.id === id);
+  document.getElementById('test-model').innerHTML = p.models.map(m => `<option value="${esc(m.id)}">${esc(m.id)}</option>`).join('');
+  document.getElementById('test-result').style.display = 'none';
+  document.getElementById('test-modal').dataset.pid = id;
+  openModal('test-modal');
+}
+async function runTest() {
+  const box = document.getElementById('test-result');
+  box.style.display = 'block'; box.className = 'test-box';
+  box.innerHTML = '<span class="spinner"></span> 测试中…';
+  document.getElementById('btn-test-run').disabled = true;
+  const r = await rpc('/api/test', 'POST', { id: document.getElementById('test-modal').dataset.pid, modelId: document.getElementById('test-model').value, effort: document.getElementById('test-effort').value });
+  document.getElementById('btn-test-run').disabled = false;
+  if (r.ok) {
+    box.className = 'test-box ok';
+    box.textContent = `✓ 连接正常  TTFT: ${r.ttftMs}ms  总耗时: ${r.totalMs}ms\n回复: ${r.text||''}`;
+  } else {
+    box.className = 'test-box fail';
+    box.textContent = `✗ ${r.status ? 'HTTP '+r.status+' ' : ''}${r.error||'失败'}  (${r.totalMs}ms)`;
+  }
+}
+
+loadState();
+</script>
+</body>
+</html>
