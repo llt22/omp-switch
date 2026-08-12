@@ -11,7 +11,7 @@ const HOME = homedir();
 const TOOL_DIR = join(HOME, '.omp', 'provider-switcher');
 const STORE_FILE = join(TOOL_DIR, 'providers.json');
 const MODELS_YML = join(HOME, '.omp', 'agent', 'models.yml');
-const PORT = 8642;
+const PORT = parseInt(process.argv.find((a) => a.startsWith('--port='))?.split('=')[1] ?? process.env.OMP_SWITCHER_PORT ?? '8642', 10);
 
 // ---------- 类型 ----------
 interface ThinkingCfg { mode?: string; minLevel?: string; maxLevel?: string }

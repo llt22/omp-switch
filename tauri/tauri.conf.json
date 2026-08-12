@@ -1,0 +1,33 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "omp-switch",
+  "version": "0.1.0",
+  "identifier": "com.llt22.omp-switch",
+  "build": {
+    "beforeDevCommand": "",
+    "devUrl": "http://127.0.0.1:8642",
+    "beforeBuildCommand": "",
+    "frontendDist": "http://127.0.0.1:8642"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "OMP Switch",
+        "width": 1200,
+        "height": 800,
+        "minWidth": 900,
+        "minHeight": 600,
+        "center": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "externalBin": ["binaries/omp-switch-server"],
+    "icon": ["icons/icon.icns", "icons/icon.ico", "icons/icon.png"]
+  }
+}

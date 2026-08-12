@@ -35,17 +35,30 @@ omp-switch 把这些变成可视化操作：**点一下切换、一键拉取模�
 
 ## 快速开始
 
-### 方式一：直接运行（推荐）
+### 方式一：桌面应用（推荐）
+
+从 [Releases](https://github.com/llt22/omp-switch/releases) 下载对应平台的安装包，安装后直接运行：
+
+| 平台 | 安装包 |
+|---|---|
+| macOS (Apple Silicon) | `omp-switch_*_aarch64.dmg` |
+| macOS (Intel) | `omp-switch_*_x64.dmg` |
+| Windows | `omp-switch_*_x64.msi` |
+| Linux | `.deb` / `.AppImage` |
+
+应用启动本地服务（127.0.0.1:8642）并打开原生窗口，支持系统托盘常驻（关闭窗口 = 隐藏到托盘，服务继续运行）。首次启动会自动从你现有的 `~/.omp/agent/models.yml` 导入供应商。
+
+### 方式二：直接运行二进制（无桌面环境）
 
 ```bash
 git clone https://github.com/llt22/omp-switch.git
 cd omp-switch
-./start.command   # 或直接运行编译好的二进制（Release 中下载）
+bun server.ts    # 或编译后的单文件二进制
 ```
 
-启动后浏览器自动打开 `http://127.0.0.1:8642`。首次启动会自动从你现有的 `~/.omp/agent/models.yml` 导入供应商。
+浏览器自动打开 `http://127.0.0.1:8642`。
 
-### 方式二：从源码构建
+### 方式三：从源码构建
 
 ```bash
 # 后端（零依赖，仅需 bun）

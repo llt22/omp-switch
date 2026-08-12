@@ -1,4 +1,4 @@
-# 构建与发布：web/dist 内嵌 + 多平台二进制 + Release
+# 构建与发布：前端 + 多平台 Tauri 桌面应用 + Release
 name: Build & Release
 
 on:
@@ -11,7 +11,31 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: bun-linux-x64
+            triple: x86_64-unknown-linux-gnu
+            artifact: linux-x64
+          - os: ubuntu-24.04-arm
+            target: bun-linux-arm64
+            triple: aarch64-unknown-linux-gnu
+            artifact: linux-arm64
+          - os: macos-13
+            target: bun-darwin-x64
+            triple: x86_64-apple-darwin
+            artifact: darwin-x64
+          - os: macos-latest
+            target: bun-darwin-arm64
+            triple: aarch64-apple-darwin
+            artifact: darwin-arm64
+          - os: windows-latest
+            target: bun-windows-x64
+            triple: x86_64-pc-windows-msvc
+            artifact: windows-x64
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
@@ -19,8 +43,14 @@ jobs:
         with:
           bun-version: latest
 
-      - name: Install root deps (yaml)
-        run: bun install --frozen-lockfile
+      - name: Install Linux system deps (Tauri)
+        if: startsWith(matrix.os, 'ubuntu')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Install project deps
+        run: bun install
 
       - name: Build frontend
         run: |
@@ -31,23 +61,31 @@ jobs:
       - name: Embed assets into bundle
         run: bun scripts/embed.mjs
 
-      - name: Compile multi-platform binaries
-        run: |
-          mkdir -p dist-bin
-          bun build --compile server.ts --outfile dist-bin/omp-switch-darwin-arm64 --target bun-darwin-arm64
-          bun build --compile server.ts --outfile dist-bin/omp-switch-darwin-x64 --target bun-darwin-x64
-          bun build --compile server.ts --outfile dist-bin/omp-switch-linux-x64 --target bun-linux-x64
-          bun build --compile server.ts --outfile dist-bin/omp-switch-linux-arm64 --target bun-linux-arm64
-          bun build --compile server.ts --outfile dist-bin/omp-switch-windows-x64.exe --target bun-windows-x64
+      - name: Compile sidecar server
+        run: bun build --compile server.ts --outfile tauri/binaries/omp-switch-server-${{ matrix.triple }} --target ${{ matrix.target }}
 
-      - uses: actions/upload-artifact@v4
+      - name: Build Tauri app
+        working-directory: tauri
+        run: env -u CI bunx tauri build
+
+      - name: Upload bundles
+        uses: actions/upload-artifact@v4
         with:
-          name: omp-switch-binaries
-          path: dist-bin/
+          name: bundles-${{ matrix.artifact }}
+          path: |
+            tauri/target/release/bundle/dmg/*.dmg
+            tauri/target/release/bundle/msi/*.msi
+            tauri/target/release/bundle/deb/*.deb
+            tauri/target/release/bundle/appimage/*.AppImage
+          if-no-files-found: ignore
 
       - name: Publish Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: dist-bin/*
+          files: |
+            tauri/target/release/bundle/dmg/*.dmg
+            tauri/target/release/bundle/msi/*.msi
+            tauri/target/release/bundle/deb/*.deb
+            tauri/target/release/bundle/appimage/*.AppImage
           generate_release_notes: true

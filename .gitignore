@@ -13,3 +13,8 @@ omp-provider-switcher
 # 系统文件
 .DS_Store
 embedded.ts
+
+# Tauri 构建产物
+tauri/target/
+tauri/gen/
+tauri/binaries/
