@@ -19,22 +19,27 @@ jobs:
             target: bun-linux-x64
             triple: x86_64-unknown-linux-gnu
             artifact: linux-x64
+            bundles: deb,rpm
           - os: ubuntu-24.04-arm
             target: bun-linux-arm64
             triple: aarch64-unknown-linux-gnu
             artifact: linux-arm64
+            bundles: deb,rpm
           - os: macos-13
             target: bun-darwin-x64
             triple: x86_64-apple-darwin
             artifact: darwin-x64
+            bundles: dmg
           - os: macos-latest
             target: bun-darwin-arm64
             triple: aarch64-apple-darwin
             artifact: darwin-arm64
+            bundles: dmg
           - os: windows-latest
             target: bun-windows-x64
             triple: x86_64-pc-windows-msvc
             artifact: windows-x64
+            bundles: msi
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -66,26 +71,18 @@ jobs:
 
       - name: Build Tauri app
         working-directory: tauri
-        run: env -u CI bunx tauri build
+        run: env -u CI bunx tauri build --bundles ${{ matrix.bundles }}
 
       - name: Upload bundles
         uses: actions/upload-artifact@v4
         with:
           name: bundles-${{ matrix.artifact }}
-          path: |
-            tauri/target/release/bundle/dmg/*.dmg
-            tauri/target/release/bundle/msi/*.msi
-            tauri/target/release/bundle/deb/*.deb
-            tauri/target/release/bundle/appimage/*.AppImage
+          path: tauri/target/release/bundle/**/*.{dmg,msi,deb,rpm,AppImage}
           if-no-files-found: ignore
 
       - name: Publish Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            tauri/target/release/bundle/dmg/*.dmg
-            tauri/target/release/bundle/msi/*.msi
-            tauri/target/release/bundle/deb/*.deb
-            tauri/target/release/bundle/appimage/*.AppImage
+          files: tauri/target/release/bundle/**/*.{dmg,msi,deb,rpm,AppImage}
           generate_release_notes: true
