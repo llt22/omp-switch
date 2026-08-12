@@ -9,7 +9,7 @@ providers.json
 
 # 编译产物
 omp-provider-switcher
-public_html.ts
 
 # 系统文件
 .DS_Store
+embedded.ts

@@ -5,7 +5,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, copyFi
 import { join } from 'path';
 import { homedir } from 'os';
 import { parse as yamlParse, stringify as yamlStringify } from 'yaml';
-import { INDEX_HTML } from './public_html';
+import { FILES as EMBEDDED } from './embedded';
 
 const HOME = homedir();
 const TOOL_DIR = join(HOME, '.omp', 'provider-switcher');
@@ -415,21 +415,26 @@ const server = Bun.serve({
     const p = url.pathname;
 
     if (p === '/' || p === '/index.html' || p.startsWith('/assets/')) {
-      const distFile = join(TOOL_DIR, 'web', 'dist', p === '/' ? 'index.html' : p.slice(1));
-      if (p.startsWith('/assets/') && existsSync(distFile)) {
-        const ext = p.split('.').pop() ?? '';
-        const mime: Record<string, string> = { js: 'text/javascript', css: 'text/css', svg: 'image/svg+xml', png: 'image/png', woff2: 'font/woff2' };
-        return new Response(readFileSync(distFile), { headers: { 'Content-Type': mime[ext] ?? 'application/octet-stream' } });
+      const rel = p === '/' ? '/index.html' : p;
+      const mime: Record<string, string> = { js: 'text/javascript', css: 'text/css', svg: 'image/svg+xml', png: 'image/png', webp: 'image/webp', woff2: 'font/woff2' };
+      const mimeOf = (path: string) => rel.endsWith('.html') ? 'text/html; charset=utf-8' : mime[path.split('.').pop() ?? ''] ?? 'application/octet-stream';
+      // 1. 本机开发：优先读 web/dist 文件系统
+      const distFile = join(TOOL_DIR, 'web', 'dist', rel.slice(1));
+      if (existsSync(distFile)) {
+        return new Response(readFileSync(distFile), { headers: { 'Content-Type': mimeOf(rel) } });
       }
-      let html = INDEX_HTML;
+      // 2. Release 二进制：读取内嵌产物
+      if (EMBEDDED[rel]) {
+        return new Response(EMBEDDED[rel], { headers: { 'Content-Type': mimeOf(rel) } });
+      }
+      // 3. 旧版 fallback（本机开发，未构建 dist 时）
       try {
-        if (existsSync(distFile)) html = readFileSync(distFile, 'utf8');
-        else {
-          const legacy = join(TOOL_DIR, 'public', 'index.html');
-          if (existsSync(legacy)) html = readFileSync(legacy, 'utf8');
+        const legacy = join(TOOL_DIR, 'public', 'index.html');
+        if (existsSync(legacy) && (p === '/' || p === '/index.html')) {
+          return new Response(readFileSync(legacy), { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
         }
       } catch {}
-      return new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+      return new Response('Not found', { status: 404 });
     }
 
     if (p === '/api/state' && req.method === 'GET') {
