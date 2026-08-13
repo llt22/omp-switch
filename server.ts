@@ -8,8 +8,11 @@ import { parse as yamlParse, stringify as yamlStringify } from 'yaml';
 import { FILES as EMBEDDED } from './embedded';
 
 const HOME = homedir();
-const TOOL_DIR = join(HOME, '.omp', 'provider-switcher');
-const STORE_FILE = join(TOOL_DIR, 'providers.json');
+// 数据目录（供应商配置、Key），固定放在 ~/.omp/omp-switch
+const DATA_DIR = join(HOME, '.omp', 'omp-switch');
+const STORE_FILE = join(DATA_DIR, 'providers.json');
+// 源码目录（静态资源 fallback，开发模式）
+const SRC_DIR = import.meta.dir;
 const MODELS_YML = join(HOME, '.omp', 'agent', 'models.yml');
 const PORT = parseInt(process.argv.find((a) => a.startsWith('--port='))?.split('=')[1] ?? process.env.OMP_SWITCHER_PORT ?? '8642', 10);
 
@@ -69,7 +72,18 @@ function saveStore(s: Store) {
 
 // 旧版 profiles.json（档案=YAML 文本）迁移为 providers 数组
 function migrateLegacy() {
-  const legacyFile = join(TOOL_DIR, 'profiles.json');
+  // 旧版数据目录（~/.omp/provider-switcher）迁移
+  const oldDir = join(HOME, '.omp', 'provider-switcher');
+  const oldStore = join(oldDir, 'providers.json');
+  if (existsSync(oldStore) && !existsSync(STORE_FILE)) {
+    try {
+      mkdirSync(DATA_DIR, { recursive: true });
+      copyFileSync(oldStore, STORE_FILE);
+      console.log('已迁移数据目录: provider-switcher -> omp-switch');
+    } catch (e) { console.error('数据迁移失败:', String(e)); }
+  }
+  mkdirSync(DATA_DIR, { recursive: true });
+  const legacyFile = join(DATA_DIR, 'profiles.json');
   if (!existsSync(legacyFile)) return;
   let legacy: { profiles?: { id?: string; name?: string; yaml?: string }[] } = {};
   try { legacy = JSON.parse(readFileSync(legacyFile, 'utf8')); } catch { return; }
@@ -419,7 +433,7 @@ const server = Bun.serve({
       const mime: Record<string, string> = { js: 'text/javascript', css: 'text/css', svg: 'image/svg+xml', png: 'image/png', webp: 'image/webp', woff2: 'font/woff2' };
       const mimeOf = (path: string) => rel.endsWith('.html') ? 'text/html; charset=utf-8' : mime[path.split('.').pop() ?? ''] ?? 'application/octet-stream';
       // 1. 本机开发：优先读 web/dist 文件系统
-      const distFile = join(TOOL_DIR, 'web', 'dist', rel.slice(1));
+      const distFile = join(SRC_DIR, 'web', 'dist', rel.slice(1));
       if (existsSync(distFile)) {
         return new Response(readFileSync(distFile), { headers: { 'Content-Type': mimeOf(rel) } });
       }
@@ -429,7 +443,7 @@ const server = Bun.serve({
       }
       // 3. 旧版 fallback（本机开发，未构建 dist 时）
       try {
-        const legacy = join(TOOL_DIR, 'public', 'index.html');
+        const legacy = join(SRC_DIR, 'public', 'index.html');
         if (existsSync(legacy) && (p === '/' || p === '/index.html')) {
           return new Response(readFileSync(legacy), { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
         }
