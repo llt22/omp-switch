@@ -48,6 +48,22 @@ omp-switch 把这些变成可视化操作：**点一下切换、一键拉取模�
 
 应用启动本地服务（127.0.0.1:8642）并打开原生窗口，支持系统托盘常驻（关闭窗口 = 隐藏到托盘，服务继续运行）。首次启动会自动从你现有的 `~/.omp/agent/models.yml` 导入供应商。
 
+#### macOS 首次打开（未签名应用的 Gatekeeper 提示）
+
+CI 构建的应用未做 Apple 签名（需要付费开发者账号），首次打开会提示"已损坏，无法打开"。**这不是文件损坏**，处理方式二选一：
+
+- **一键安装脚本**（推荐）：下载 dmg 后将 `omp-switch.app` 拖到下载目录，执行：
+
+  ```bash
+  bash scripts/install-macos.sh
+  ```
+
+- **手动**：右键点击应用 → 打开 → 再点"打开"；或终端执行：
+
+  ```bash
+  xattr -dr com.apple.quarantine ~/Downloads/omp-switch.app
+  ```
+
 ### 方式二：直接运行二进制（无桌面环境）
 
 ```bash
