@@ -38,8 +38,10 @@ jobs:
       - name: Test backend
         run: bun test
 
-      - name: Bundle backend
-        run: bun build server.ts --target=bun --outfile /tmp/omp-switch-server
+      - name: Compile backend sidecar
+        run: |
+          mkdir -p tauri/binaries
+          bun build --compile server.ts --target bun-linux-x64 --outfile tauri/binaries/omp-switch-server-x86_64-unknown-linux-gnu
 
       - name: Check desktop app
         run: cargo check --locked --manifest-path tauri/Cargo.toml
