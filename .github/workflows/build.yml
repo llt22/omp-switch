@@ -82,7 +82,13 @@ jobs:
 
       - name: Verify macOS app signature
         if: startsWith(matrix.os, 'macos')
-        run: codesign --verify --deep --strict --verbose=2 tauri/target/release/bundle/macos/omp-switch.app
+        run: |
+          dmg_path=$(find tauri/target/release/bundle/dmg -name '*.dmg' -print -quit)
+          test -n "$dmg_path"
+          mount_point=$(mktemp -d)
+          hdiutil attach "$dmg_path" -readonly -nobrowse -mountpoint "$mount_point"
+          trap 'hdiutil detach "$mount_point"' EXIT
+          codesign --verify --deep --strict --verbose=2 "$mount_point/omp-switch.app"
 
       - name: Upload bundles
         uses: actions/upload-artifact@v4

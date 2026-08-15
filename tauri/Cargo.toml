@@ -1,6 +1,6 @@
 [package]
 name = "omp-switch"
-version = "0.1.6"
+version = "0.1.7"
 description = "OMP 供应商/模型配置管理器"
 edition = "2021"
 
