@@ -25,7 +25,7 @@ jobs:
             triple: aarch64-unknown-linux-gnu
             artifact: linux-arm64
             bundles: deb,rpm
-          - os: macos-13
+          - os: macos-15-intel
             target: bun-darwin-x64
             triple: x86_64-apple-darwin
             artifact: darwin-x64
@@ -70,9 +70,19 @@ jobs:
       - name: Compile sidecar server
         run: bun build --compile server.ts --outfile tauri/binaries/omp-switch-server-${{ matrix.triple }} --target ${{ matrix.target }}
 
+      - name: Repair macOS sidecar signature
+        if: startsWith(matrix.os, 'macos')
+        run: |
+          codesign --force --sign - tauri/binaries/omp-switch-server-${{ matrix.triple }}
+          codesign --verify --strict --verbose=2 tauri/binaries/omp-switch-server-${{ matrix.triple }}
+
       - name: Build Tauri app
         working-directory: tauri
-        run: env -u CI bunx tauri build --bundles ${{ matrix.bundles }}
+        run: bunx tauri build --bundles ${{ matrix.bundles }}
+
+      - name: Verify macOS app signature
+        if: startsWith(matrix.os, 'macos')
+        run: codesign --verify --deep --strict --verbose=2 tauri/target/release/bundle/macos/omp-switch.app
 
       - name: Upload bundles
         uses: actions/upload-artifact@v4
