@@ -15,6 +15,11 @@ export function TestDialog({ provider, open, onClose }: Props) {
   const [effort, setEffort] = useState('medium');
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
+  const selectedModel = provider.models.find(model => model.id === modelId);
+  const thinkingFormat = selectedModel?.compat?.thinkingFormat ?? 'openai';
+  const supportsEffort = provider.api === 'openai-completions'
+    && !!selectedModel?.reasoning
+    && (thinkingFormat === 'openai' || thinkingFormat === 'openrouter');
 
   useEffect(() => {
     if (open) { setModelId(provider.models[0]?.id ?? ''); setResult(null); }
@@ -23,12 +28,16 @@ export function TestDialog({ provider, open, onClose }: Props) {
   const run = async () => {
     setRunning(true);
     setResult(null);
-    const r = await api.test(provider.id, modelId, effort);
-    setRunning(false);
-    if (r.ok) {
-      setResult({ ok: true, text: `✓ 连接正常  TTFT: ${r.ttftMs ?? '—'}ms  总耗时: ${r.totalMs}ms\n回复: ${r.text || ''}` });
-    } else {
-      setResult({ ok: false, text: `✗ ${r.status ? 'HTTP ' + r.status + ' ' : ''}${r.error || '失败'}  (${r.totalMs}ms)` });
+    try {
+      const r = await api.test(provider.id, modelId, effort);
+      if (r.ok) {
+        const timing = r.streamed ? `TTFT: ${r.ttftMs ?? '—'}ms  总耗时: ${r.totalMs}ms` : `响应耗时: ${r.totalMs}ms`;
+        setResult({ ok: true, text: `✓ 连接正常  ${timing}\n回复: ${r.text || ''}` });
+      } else {
+        setResult({ ok: false, text: `✗ ${r.status ? 'HTTP ' + r.status + ' ' : ''}${r.error || '失败'}${r.totalMs ? `  (${r.totalMs}ms)` : ''}` });
+      }
+    } finally {
+      setRunning(false);
     }
   };
 
@@ -46,17 +55,18 @@ export function TestDialog({ provider, open, onClose }: Props) {
               </SelectContent>
             </Select>
           </div>
-          <div className="w-32 space-y-1.5">
+          {supportsEffort && <div className="w-32 space-y-1.5">
             <span className="text-xs text-muted-foreground">思考级别</span>
             <Select value={effort} onValueChange={setEffort}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
-                {['low', 'medium', 'high', 'xhigh'].map(l => <SelectItem key={l} value={l}>{l}</SelectItem>)}
+                {['minimal', 'low', 'medium', 'high', 'xhigh', 'max'].map(l => <SelectItem key={l} value={l}>{l}</SelectItem>)}
               </SelectContent>
             </Select>
-          </div>
+          </div>}
           <Button onClick={run} disabled={running}>{running ? '测试中…' : '测试'}</Button>
         </div>
+        <p className="text-xs text-muted-foreground">测试会向供应商发送一次真实请求，可能产生少量费用。</p>
         {result && (
           <pre className={`mt-3 whitespace-pre-wrap rounded-md border p-3 font-mono text-xs ${result.ok ? 'border-emerald-300 bg-emerald-50 text-emerald-800' : 'border-destructive/40 bg-destructive/5 text-destructive'}`}>
             {result.text}

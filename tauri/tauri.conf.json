@@ -1,10 +1,13 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "omp-switch",
-  "version": "0.1.4",
   "identifier": "com.llt22.omp-switch",
   "build": {
-    "beforeDevCommand": "",
+    "beforeDevCommand": {
+      "script": "bun server.ts",
+      "cwd": "..",
+      "wait": false
+    },
     "devUrl": "http://127.0.0.1:8642",
     "beforeBuildCommand": "",
     "frontendDist": "http://127.0.0.1:8642"
@@ -21,7 +24,7 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self'; connect-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; object-src 'none'; base-uri 'none'"
     }
   },
   "bundle": {

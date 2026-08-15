@@ -1,6 +1,6 @@
 [package]
 name = "omp-switch"
-version = "0.1.0"
+version = "0.1.5"
 description = "OMP 供应商/模型配置管理器"
 edition = "2021"
 
@@ -10,7 +10,6 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 tauri = { version = "2", features = ["tray-icon", "image-png"] }
 tauri-plugin-shell = "2"
-libc = "0.2"
 
 [lib]
 name = "omp_switch_lib"

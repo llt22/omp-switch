@@ -15,26 +15,28 @@ export function ProviderCard({ p, live, onEdit, onTest, onDuplicate }: {
 }) {
   const { refresh, toast } = useApp();
   const [busy, setBusy] = useState(false);
-  const [confirmDel, setConfirmDel] = useState(false);
 
   const toggle = async () => {
     setBusy(true);
-    const r = await api.saveProvider({ ...p, enabled: !p.enabled, apiKey: undefined });
-    setBusy(false);
-    toast(r.ok ? (p.enabled ? '已停用' : '已启用') : r.error || '操作失败', r.ok ? 'ok' : 'err');
-    refresh();
+    try {
+      const { apiKeyMasked: _apiKeyMasked, ...provider } = p;
+      const r = await api.saveProvider({ ...provider, enabled: !p.enabled, apiKey: undefined });
+      toast(r.ok ? (p.enabled ? '已移出下次应用' : '已加入下次应用') : r.error || '操作失败', r.ok ? 'ok' : 'err');
+      if (r.ok) await refresh();
+    } finally {
+      setBusy(false);
+    }
   };
 
   const del = async () => {
-    if (!confirmDel) {
-      setConfirmDel(true);
-      setTimeout(() => setConfirmDel(false), 2000);
-      return;
-    }
-    setConfirmDel(false);
-    await api.deleteProvider(p.id);
-    toast('已删除');
-    refresh();
+    const message = live
+      ? '删除后仍需“应用到 omp”才会从当前配置移除。确认删除此供应商？'
+      : '确认删除此供应商？';
+    if (!confirm(message)) return;
+    const r = await api.deleteProvider(p.id);
+    if (!r.ok) { toast(r.error || '删除失败', 'err'); return; }
+    toast('已从编辑区删除');
+    await refresh();
   };
 
   const chips = p.models.slice(0, 3);
@@ -48,7 +50,7 @@ export function ProviderCard({ p, live, onEdit, onTest, onDuplicate }: {
             <span className="font-semibold text-[15px] tracking-tight">{p.name}</span>
             <Badge variant="secondary" className="text-[11px]">{TYPE_LABEL[p.type] ?? p.type}</Badge>
             {live && <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100">生效中</Badge>}
-            {!p.enabled && <Badge variant="outline" className="text-amber-600">已停用</Badge>}
+            {!p.enabled && <Badge variant="outline" className="text-amber-600">不参与下次应用</Badge>}
           </div>
           <p className="mt-1 text-xs text-muted-foreground break-all">
             <code className="rounded bg-muted px-1 py-0.5 text-[11px]">{p.baseUrl}</code>
@@ -67,7 +69,7 @@ export function ProviderCard({ p, live, onEdit, onTest, onDuplicate }: {
         <div className="flex shrink-0 items-start gap-1.5">
           <Button size="sm" variant={p.enabled ? 'outline' : 'default'} onClick={toggle} disabled={busy}>
             {p.enabled ? <PowerOff className="size-3.5" /> : <Power className="size-3.5" />}
-            {p.enabled ? '停用' : '启用'}
+            {p.enabled ? '移出' : '加入'}
           </Button>
           <Button size="sm" variant="outline" onClick={onTest}>
             <FlaskConical className="size-3.5" /> 测试
@@ -78,8 +80,8 @@ export function ProviderCard({ p, live, onEdit, onTest, onDuplicate }: {
           <Button size="sm" variant="outline" onClick={onDuplicate}>
             <Copy className="size-3.5" /> 复制
           </Button>
-          <Button size="sm" variant={confirmDel ? 'destructive' : 'outline'} className={confirmDel ? '' : 'text-destructive hover:text-destructive'} onClick={del}>
-            <Trash2 className="size-3.5" /> {confirmDel ? '确认删除？' : ''}
+          <Button size="sm" variant="outline" className="text-destructive hover:text-destructive" onClick={del}>
+            <Trash2 className="size-3.5" /> 删除
           </Button>
         </div>
       </div>

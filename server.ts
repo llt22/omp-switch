@@ -1,8 +1,22 @@
 // omp 供应商配置管理器 - 后端服务
 // 功能设计参考: CC Switch(供应商卡片/预设/导入导出备份) + CLIProxyAPI 生态(类型驱动添加/拉取模型/流式健康检测)
 // 零框架依赖, bun 运行: bun server.ts
-import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, copyFileSync, chmodSync, statSync } from 'fs';
-import { join } from 'path';
+import {
+  chmodSync,
+  closeSync,
+  copyFileSync,
+  existsSync,
+  fsyncSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  readdirSync,
+  renameSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
+} from 'fs';
+import { dirname, join } from 'path';
 import { homedir } from 'os';
 import { parse as yamlParse, stringify as yamlStringify } from 'yaml';
 import { FILES as EMBEDDED } from './embedded';
@@ -36,6 +50,8 @@ interface ModelCfg {
   contextWindow?: number;
   maxTokens?: number;
   compat?: ModelCompat;
+  limitsEstimated?: boolean;
+  extra?: Record<string, unknown>;
 }
 interface ProviderCfg {
   id: string;
@@ -50,6 +66,7 @@ interface ProviderCfg {
   enabled: boolean;
   createdAt: number;
   updatedAt: number;
+  extra?: Record<string, unknown>;
 }
 interface Store { providers: ProviderCfg[] }
 
@@ -63,12 +80,34 @@ const API_OPTIONS: Record<string, { label: string; defaultBaseUrl: string; keyHe
 // ---------- 存储 ----------
 function loadStore(): Store {
   if (!existsSync(STORE_FILE)) return { providers: [] };
-  try { return JSON.parse(readFileSync(STORE_FILE, 'utf8')); } catch { return { providers: [] }; }
+  try {
+    const parsed = JSON.parse(readFileSync(STORE_FILE, 'utf8')) as Partial<Store>;
+    if (!Array.isArray(parsed.providers)) throw new Error('providers 字段不是数组');
+    return { providers: parsed.providers };
+  } catch (e) {
+    throw new Error(`providers.json 读取失败，请保留文件并检查内容：${e instanceof Error ? e.message : String(e)}`);
+  }
+}
+function atomicWriteFile(file: string, content: string, mode = 0o600) {
+  mkdirSync(dirname(file), { recursive: true });
+  const tempFile = `${file}.${process.pid}.${Date.now()}.tmp`;
+  let fd: number | null = null;
+  try {
+    writeFileSync(tempFile, content, { mode });
+    fd = openSync(tempFile, 'r');
+    fsyncSync(fd);
+    closeSync(fd);
+    fd = null;
+    renameSync(tempFile, file);
+    chmodSync(file, mode);
+  } catch (e) {
+    if (fd !== null) closeSync(fd);
+    if (existsSync(tempFile)) unlinkSync(tempFile);
+    throw e;
+  }
 }
 function saveStore(s: Store) {
-  mkdirSync(DATA_DIR, { recursive: true });
-  writeFileSync(STORE_FILE, JSON.stringify(s, null, 2));
-  try { chmodSync(STORE_FILE, 0o600); } catch {}
+  atomicWriteFile(STORE_FILE, JSON.stringify(s, null, 2));
 }
 
 // 旧版 profiles.json（档案=YAML 文本）迁移为 providers 数组
@@ -87,10 +126,17 @@ function migrateLegacy() {
   const legacyFile = join(DATA_DIR, 'profiles.json');
   if (!existsSync(legacyFile)) return;
   let legacy: { profiles?: { id?: string; name?: string; yaml?: string }[] } = {};
-  try { legacy = JSON.parse(readFileSync(legacyFile, 'utf8')); } catch { return; }
+  try { legacy = JSON.parse(readFileSync(legacyFile, 'utf8')); } catch (e) {
+    console.error('旧版 profiles.json 解析失败，已保留原文件:', e);
+    return;
+  }
   if (!legacy.profiles?.length) return;
   const store = loadStore();
-  if (store.providers.length) { try { Bun.spawnSync(['rm', '-f', legacyFile]); } catch {} return; }
+  if (store.providers.length) {
+    const result = Bun.spawnSync(['rm', '-f', legacyFile]);
+    if (!result.success) console.error('旧版 profiles.json 清理失败:', result.stderr.toString());
+    return;
+  }
   for (const p of legacy.profiles) {
     if (!p.yaml) continue;
     const converted = yamlToProviders(p.yaml);
@@ -99,19 +145,20 @@ function migrateLegacy() {
     }
   }
   saveStore(store);
-  try { Bun.spawnSync(['rm', '-f', legacyFile]); } catch {}
+  const result = Bun.spawnSync(['rm', '-f', legacyFile]);
+  if (!result.success) console.error('旧版 profiles.json 清理失败:', result.stderr.toString());
 }
 
 // ---------- YAML 转换 ----------
 function providersToYaml(providers: ProviderCfg[]): string {
   const root: Record<string, unknown> = {};
   for (const p of providers.filter((x) => x.enabled)) {
-    const entry: Record<string, unknown> = { baseUrl: p.baseUrl, api: p.api };
+    const entry: Record<string, unknown> = { ...(p.extra ?? {}), baseUrl: p.baseUrl, api: p.api };
     if (p.apiKey) entry.apiKey = p.apiKey;
     if (p.authHeader) entry.authHeader = true;
     if (p.headers && Object.keys(p.headers).length) entry.headers = p.headers;
     entry.models = p.models.map((m) => {
-      const e: Record<string, unknown> = { id: m.id };
+      const e: Record<string, unknown> = { ...(m.extra ?? {}), id: m.id };
       if (m.name) e.name = m.name;
       if (m.reasoning) e.reasoning = true;
       if (m.thinking && (m.thinking.mode || m.thinking.minLevel || m.thinking.maxLevel)) e.thinking = m.thinking;
@@ -128,12 +175,16 @@ function providersToYaml(providers: ProviderCfg[]): string {
 
 function yamlToProviders(yaml: string): ProviderCfg[] {
   let parsed: unknown;
-  try { parsed = yamlParse(yaml); } catch { return []; }
+  try { parsed = yamlParse(yaml); } catch (e) {
+    throw new Error(`YAML 解析失败：${e instanceof Error ? e.message : String(e)}`);
+  }
   const providers = (parsed as { providers?: Record<string, Record<string, unknown>> })?.providers;
   if (!providers) return [];
   const now = Date.now();
   return Object.entries(providers).map(([id, cfg]) => {
     const models = (cfg.models as Record<string, unknown>[] | undefined) ?? [];
+    const providerKnown = new Set(['name', 'baseUrl', 'api', 'apiKey', 'authHeader', 'headers', 'models']);
+    const extra = Object.fromEntries(Object.entries(cfg).filter(([key]) => !providerKnown.has(key)));
     return {
       id,
       name: (cfg.name as string) ?? id,
@@ -143,19 +194,24 @@ function yamlToProviders(yaml: string): ProviderCfg[] {
       apiKey: cfg.apiKey as string | undefined,
       authHeader: cfg.authHeader as boolean | undefined,
       headers: cfg.headers as Record<string, string> | undefined,
-      models: models.map((m) => ({
-        id: m.id as string,
-        name: m.name as string | undefined,
-        reasoning: m.reasoning as boolean | undefined,
-        thinking: m.thinking as ThinkingCfg | undefined,
-        input: m.input as string[] | undefined,
-        contextWindow: m.contextWindow as number | undefined,
-        maxTokens: m.maxTokens as number | undefined,
-        compat: m.compat as ModelCompat | undefined,
-      })),
+      models: models.map((m) => {
+        const modelKnown = new Set(['id', 'name', 'reasoning', 'thinking', 'input', 'contextWindow', 'maxTokens', 'compat']);
+        return {
+          id: m.id as string,
+          name: m.name as string | undefined,
+          reasoning: m.reasoning as boolean | undefined,
+          thinking: m.thinking as ThinkingCfg | undefined,
+          input: m.input as string[] | undefined,
+          contextWindow: m.contextWindow as number | undefined,
+          maxTokens: m.maxTokens as number | undefined,
+          compat: m.compat as ModelCompat | undefined,
+          extra: Object.fromEntries(Object.entries(m).filter(([key]) => !modelKnown.has(key))),
+        };
+      }),
       enabled: true,
       createdAt: now,
       updatedAt: now,
+      extra,
     };
   });
 }
@@ -174,11 +230,24 @@ function detectType(api: string | undefined, baseUrl: string): ProviderCfg['type
 }
 
 // ---------- 当前配置 ----------
-function currentState() {
-  if (!existsSync(MODELS_YML)) return { exists: false, providers: [], raw: '' };
+function currentState(draftProviders: ProviderCfg[]) {
+  if (!existsSync(MODELS_YML)) {
+    return { exists: false, providers: [], enabledCount: 0, hasUnappliedChanges: draftProviders.some((p) => p.enabled) };
+  }
   const raw = readFileSync(MODELS_YML, 'utf8');
   const providers = yamlToProviders(raw);
-  return { exists: true, providers, raw, enabledCount: providers.length };
+  const currentCanonical = yamlStringify(yamlParse(raw), { sortMapEntries: true });
+  const draftCanonical = yamlStringify(yamlParse(providersToYaml(draftProviders)), { sortMapEntries: true });
+  return {
+    exists: true,
+    providers: providers.map((provider) => ({
+      ...provider,
+      apiKeyMasked: maskKey(provider.apiKey),
+      apiKey: undefined,
+    })),
+    enabledCount: providers.length,
+    hasUnappliedChanges: currentCanonical !== draftCanonical,
+  };
 }
 
 // ---------- 备份 ----------
@@ -189,27 +258,35 @@ function listBackups() {
   return readdirSync(dir).filter((f) => f.startsWith('models.yml.bak-')).map((f) => {
     const p = join(dir, f);
     const st = statSync(p);
-    return { name: f, size: st.size, mtime: st.mtimeMs };
+    let providerCount: number | null = null;
+    try {
+      const parsed = yamlParse(readFileSync(p, 'utf8')) as { providers?: Record<string, unknown> };
+      providerCount = parsed.providers ? Object.keys(parsed.providers).length : 0;
+    } catch {}
+    const trigger = f.startsWith('models.yml.bak-apply-')
+      ? 'apply'
+      : f.startsWith('models.yml.bak-restore-') ? 'restore' : 'legacy';
+    return { name: f, size: st.size, mtime: st.mtimeMs, providerCount, trigger };
   }).sort((a, b) => b.mtime - a.mtime);
 }
-function makeBackup() {
+function makeBackup(trigger: 'apply' | 'restore') {
   if (!existsSync(MODELS_YML)) return null;
   const dir = backupDir();
   mkdirSync(dir, { recursive: true });
-  const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-  const name = `models.yml.bak-${ts}`;
+  const ts = new Date().toISOString().replace(/[:.]/g, '-');
+  const name = `models.yml.bak-${trigger}-${ts}`;
   copyFileSync(MODELS_YML, join(dir, name));
   const all = listBackups();
   for (const b of all.slice(10)) {
-    try { Bun.spawnSync(['rm', '-f', join(dir, b.name)]); } catch {}
+    const result = Bun.spawnSync(['rm', '-f', join(dir, b.name)]);
+    if (!result.success) console.error(`旧备份清理失败: ${b.name}`, result.stderr.toString());
   }
   return name;
 }
 function applyToModelsYml(providers: ProviderCfg[]) {
-  const backup = makeBackup();
+  const backup = makeBackup('apply');
   const yaml = providersToYaml(providers);
-  writeFileSync(MODELS_YML, yaml);
-  try { chmodSync(MODELS_YML, 0o600); } catch {}
+  atomicWriteFile(MODELS_YML, yaml);
   return backup;
 }
 
@@ -350,7 +427,7 @@ async function testModel(provider: ProviderCfg, modelId: string, effort: string)
       };
       if (model?.compat?.maxTokensField === 'max_tokens') body.max_tokens = 64;
       else body.max_completion_tokens = 64;
-      if (effort && (model?.reasoning || provider.type !== 'openai-compatible')) Object.assign(body, thinkingParams(model?.compat, effort));
+      if (effort && (model?.reasoning || model?.compat?.supportsReasoningEffort)) Object.assign(body, thinkingParams(model?.compat, effort));
       const res = await fetch(`${base}/v1/chat/completions`, {
         method: 'POST',
         headers: { ...modelAuthHeaders(provider.api, provider.apiKey ?? ''), ...(provider.headers ?? {}), 'Content-Type': 'application/json' },
@@ -387,6 +464,7 @@ async function testModel(provider: ProviderCfg, modelId: string, effort: string)
     }
     return {
       ok: true,
+      streamed: provider.api === 'anthropic-messages' || provider.api === 'openai-completions',
       totalMs: Date.now() - t0,
       ttftMs: firstContent !== null ? firstContent - t0 : null,
       firstByteMs: firstByte !== null ? firstByte - t0 : null,
@@ -409,6 +487,10 @@ function validateProvider(p: Partial<ProviderCfg>): string | null {
   if (p.models.some((m) => !m.id?.trim())) return '模型 id 不能为空';
   if (p.models.some((m) => !m.contextWindow)) return '模型缺少 contextWindow';
   if (p.models.some((m) => !m.maxTokens)) return '模型缺少 maxTokens';
+  if (p.models.some((m) => !Number.isInteger(m.contextWindow) || m.contextWindow! <= 0)) return 'contextWindow 必须是正整数';
+  if (p.models.some((m) => !Number.isInteger(m.maxTokens) || m.maxTokens! <= 0)) return 'maxTokens 必须是正整数';
+  if (new Set(p.models.map((m) => m.id.trim())).size !== p.models.length) return '模型 id 不能重复';
+  if (p.headers && (Array.isArray(p.headers) || Object.values(p.headers).some((value) => typeof value !== 'string'))) return 'headers 必须是字符串键值对';
   return null;
 }
 
@@ -426,10 +508,15 @@ const server = Bun.serve({
   port: PORT,
   hostname: '127.0.0.1',
   async fetch(req) {
-    const url = new URL(req.url);
-    const p = url.pathname;
+    try {
+      const url = new URL(req.url);
+      const p = url.pathname;
 
-    if (p === '/' || p === '/index.html' || p.startsWith('/assets/')) {
+    if (p === '/api/health' && req.method === 'GET') {
+      return json({ ok: true, service: 'omp-switch' });
+    }
+
+    if (p === '/' || p === '/index.html' || p === '/favicon.svg' || p.startsWith('/assets/')) {
       const rel = p === '/' ? '/index.html' : p;
       const mime: Record<string, string> = { js: 'text/javascript', css: 'text/css', svg: 'image/svg+xml', png: 'image/png', webp: 'image/webp', woff2: 'font/woff2' };
       const mimeOf = (path: string) => rel.endsWith('.html') ? 'text/html; charset=utf-8' : mime[path.split('.').pop() ?? ''] ?? 'application/octet-stream';
@@ -462,7 +549,7 @@ const server = Bun.serve({
         return json({
           providers: store.providers.map((x) => ({ ...x, apiKeyMasked: maskKey(x.apiKey), apiKey: undefined })),
           apiOptions: API_OPTIONS,
-          current: currentState(),
+          current: currentState(store.providers),
           backups: listBackups(),
         });
       } catch (e) {
@@ -505,10 +592,31 @@ const server = Bun.serve({
     if (p === '/api/restore' && req.method === 'POST') {
       const { name } = (await req.json()) as { name: string };
       const dir = backupDir();
+      if (!listBackups().some((backup) => backup.name === name)) return json({ error: '备份不存在' }, 404);
       const file = join(dir, name);
-      if (!name.startsWith('models.yml.bak-') || !existsSync(file)) return json({ error: '备份不存在' }, 404);
-      const backup = makeBackup();
-      copyFileSync(file, MODELS_YML);
+      const backup = makeBackup('restore');
+      const restoredYaml = readFileSync(file, 'utf8');
+      const restoredProviders = yamlToProviders(restoredYaml);
+      atomicWriteFile(MODELS_YML, restoredYaml);
+
+      const store = loadStore();
+      const now = Date.now();
+      const restoredById = new Map(restoredProviders.map((provider) => [provider.id, provider]));
+      store.providers = store.providers.map((provider) => {
+        const restored = restoredById.get(provider.id);
+        if (!restored) return { ...provider, enabled: false, updatedAt: now };
+        restoredById.delete(provider.id);
+        return {
+          ...provider,
+          ...restored,
+          name: provider.name,
+          enabled: true,
+          createdAt: provider.createdAt,
+          updatedAt: now,
+        };
+      });
+      for (const restored of restoredById.values()) store.providers.push({ ...restored, updatedAt: now });
+      saveStore(store);
       return json({ ok: true, backup });
     }
 
@@ -518,8 +626,8 @@ const server = Bun.serve({
       let effBaseUrl = baseUrl, effApiKey = apiKey, effApi = api, effHeaders = headers;
       if (providerId) {
         const store = loadStore();
-        const p = store.providers.find((x) => x.id === providerId);
-        if (p) { effBaseUrl = p.baseUrl; effApiKey = p.apiKey; effApi = p.api; effHeaders = p.headers; }
+        const storedProvider = store.providers.find((x) => x.id === providerId);
+        if (storedProvider && !effApiKey) effApiKey = storedProvider.apiKey;
       }
       if (!effBaseUrl) return json({ error: '请先填写 baseUrl' }, 400);
       try {
@@ -540,7 +648,8 @@ const server = Bun.serve({
     }
 
     if (p === '/api/import' && req.method === 'POST') {
-      const { yaml } = (await req.json()) as { yaml: string };
+      if (!existsSync(MODELS_YML)) return json({ error: '当前 models.yml 不存在' }, 404);
+      const yaml = readFileSync(MODELS_YML, 'utf8');
       const providers = yamlToProviders(yaml);
       if (!providers.length) return json({ error: '未解析到 providers 配置' }, 400);
       const store = loadStore();
@@ -559,9 +668,12 @@ const server = Bun.serve({
     }
 
     return json({ error: 'Not found' }, 404);
+    } catch (e) {
+      console.error('请求处理失败:', e);
+      return json({ error: e instanceof Error ? e.message : String(e) }, 500);
+    }
   },
 });
 
-console.log(`omp 供应商配置器运行中: http://127.0.0.1:${PORT}`);
 migrateLegacy();
-
+console.log(`OMP_SWITCH_READY http://127.0.0.1:${PORT}`);

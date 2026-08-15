@@ -46,7 +46,7 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: 1.3.14
 
       - name: Install Linux system deps (Tauri)
         if: startsWith(matrix.os, 'ubuntu')
@@ -61,6 +61,7 @@ jobs:
         run: |
           cd web
           bun install
+          bun run typecheck
           bunx vite build
 
       - name: Embed assets into bundle

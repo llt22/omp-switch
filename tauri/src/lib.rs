@@ -1,54 +1,85 @@
+use std::sync::{Arc, Mutex};
 use tauri::{
     menu::{Menu, MenuItem},
     tray::TrayIconBuilder,
     Manager,
 };
 
-/// 清理占用 8642 端口的旧 sidecar 进程
-fn kill_stale_server() {
-    use std::process::Command;
-    if let Ok(output) = Command::new("lsof")
-        .args(["-ti", ":8642"])
-        .output()
-    {
-        let pids = String::from_utf8_lossy(&output.stdout);
-        for pid in pids.split_whitespace() {
-            if let Ok(pid_num) = pid.parse::<i32>() {
-                unsafe { libc::kill(pid_num, libc::SIGTERM); }
-            }
-        }
-        if !pids.is_empty() {
-            std::thread::sleep(std::time::Duration::from_millis(500));
-        }
-    }
-}
-
-/// 启动本地服务（sidecar），失败时窗口仍可用（复用已在运行的服务）
-fn spawn_server(app: &tauri::App) -> Option<tauri_plugin_shell::process::CommandChild> {
+/// 发布版启动本地服务，并在确认服务已成功监听后交给应用生命周期管理。
+#[cfg(not(debug_assertions))]
+fn spawn_server(app: &tauri::App) -> Result<tauri_plugin_shell::process::CommandChild, String> {
+    use tauri_plugin_shell::process::CommandEvent;
     use tauri_plugin_shell::ShellExt;
-    match app.shell().sidecar("omp-switch-server") {
-        Ok(cmd) => match cmd.spawn() {
-            Ok((_rx, child)) => Some(child),
-            Err(e) => {
-                eprintln!("sidecar spawn failed: {e}（可能已有服务在运行，直接复用）");
-                None
+    let cmd = app
+        .shell()
+        .sidecar("omp-switch-server")
+        .map_err(|e| format!("sidecar not found: {e}"))?;
+    let (mut rx, child) = cmd
+        .spawn()
+        .map_err(|e| format!("sidecar spawn failed: {e}"))?;
+
+    let ready = std::thread::spawn(move || {
+        let mut stderr = Vec::new();
+        loop {
+            match rx.blocking_recv() {
+                Some(CommandEvent::Stdout(line)) => {
+                    if String::from_utf8_lossy(&line).contains("OMP_SWITCH_READY") {
+                        return Ok(());
+                    }
+                }
+                Some(CommandEvent::Stderr(line)) => {
+                    let line = String::from_utf8_lossy(&line).trim().to_string();
+                    if !line.is_empty() {
+                        stderr.push(line);
+                    }
+                }
+                Some(CommandEvent::Error(error)) => {
+                    return Err(format!("sidecar startup failed: {error}"));
+                }
+                Some(CommandEvent::Terminated(payload)) => {
+                    let detail = stderr
+                        .iter()
+                        .find(|line| line.starts_with("error:"))
+                        .or_else(|| stderr.last())
+                        .cloned()
+                        .unwrap_or_else(|| {
+                            format!("code: {:?}, signal: {:?}", payload.code, payload.signal)
+                        });
+                    return Err(format!("sidecar exited before ready: {detail}"));
+                }
+                None => return Err("sidecar event channel closed before ready".to_string()),
+                _ => {}
             }
-        },
-        Err(e) => {
-            eprintln!("sidecar not found: {e}");
-            None
         }
+    })
+    .join()
+    .map_err(|_| "sidecar readiness check panicked".to_string())?;
+
+    if let Err(error) = ready {
+        let _ = child.kill();
+        return Err(error);
     }
+    Ok(child)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let server_child: Arc<Mutex<Option<tauri_plugin_shell::process::CommandChild>>> =
+        Arc::new(Mutex::new(None));
+    let server_child_for_setup = Arc::clone(&server_child);
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
-        .setup(|app| {
-            // 清理旧版 sidecar 后再启动新的
-            kill_stale_server();
-            let _server = spawn_server(app);
+        .setup(move |app| {
+            #[cfg(not(debug_assertions))]
+            {
+                let child = spawn_server(app).map_err(std::io::Error::other)?;
+                *server_child_for_setup
+                    .lock()
+                    .map_err(|_| std::io::Error::other("sidecar 状态锁已损坏"))? = Some(child);
+            }
+
+            #[cfg(debug_assertions)]
+            let _ = &server_child_for_setup;
 
             // 系统托盘：显示窗口 / 退出
             let show = MenuItem::with_id(app, "show", "显示窗口", true, None::<&str>)?;
@@ -84,9 +115,16 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("failed to build tauri app");
 
-    app.run(|_app_handle, event| {
-        if let tauri::RunEvent::ExitRequested { .. } = event {
-            // 托盘退出时，由系统回收 sidecar 子进程
+    app.run(move |_app_handle, event| {
+        if matches!(
+            event,
+            tauri::RunEvent::Exit | tauri::RunEvent::ExitRequested { .. }
+        ) {
+            if let Ok(mut child) = server_child.lock() {
+                if let Some(child) = child.take() {
+                    let _ = child.kill();
+                }
+            }
         }
     });
 }

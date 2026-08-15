@@ -24,9 +24,11 @@ export function FetchModelsDialog({ open, onClose, baseUrl, apiKey, apiType, hea
 
   useEffect(() => {
     if (!open) return;
+    let cancelled = false;
     setLoading(true);
     setError('');
     api.fetchModels(baseUrl, apiKey, apiType, headers, providerId).then(r => {
+      if (cancelled) return;
       setLoading(false);
       if (r.ok && r.models) {
         setModels(r.models);
@@ -35,6 +37,7 @@ export function FetchModelsDialog({ open, onClose, baseUrl, apiKey, apiType, hea
         setError(r.error || '拉取失败');
       }
     });
+    return () => { cancelled = true; };
   }, [open, baseUrl, apiKey, apiType]);
 
   const all = picked.size === models.length && models.length > 0;

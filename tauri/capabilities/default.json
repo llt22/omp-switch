@@ -4,8 +4,6 @@
   "description": "默认能力：主窗口 + sidecar 启动",
   "windows": ["main"],
   "permissions": [
-    "core:default",
-    "shell:allow-spawn",
-    "shell:allow-execute"
+    "core:default"
   ]
 }

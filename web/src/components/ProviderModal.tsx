@@ -27,6 +27,7 @@ export function ProviderModal({ open, onClose, editing, duplicate }: Props) {
   const [type, setType] = useState<'openai-compatible' | 'anthropic' | 'openai' | 'gemini'>('openai-compatible');
   const [name, setName] = useState('');
   const [pid, setPid] = useState('');
+  const [pidTouched, setPidTouched] = useState(false);
   const [baseUrl, setBaseUrl] = useState('');
   const [apiKey, setApiKey] = useState('');
   const [apiType, setApiType] = useState('openai-completions');
@@ -37,14 +38,16 @@ export function ProviderModal({ open, onClose, editing, duplicate }: Props) {
   const [showAdv, setShowAdv] = useState(false);
   const [showFetch, setShowFetch] = useState(false);
   const [modelModalIdx, setModelModalIdx] = useState<number | null>(null);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!open) return;
-    const def = TYPES.find(t => t.type === type)!;
     if (editing) {
+      const def = TYPES.find(t => t.type === editing.type)!;
       setType(editing.type);
       setName(editing.name);
       setPid(editing.id);
+      setPidTouched(true);
       setBaseUrl(editing.baseUrl);
       setApiKey('');
       setApiType(editing.api);
@@ -52,9 +55,11 @@ export function ProviderModal({ open, onClose, editing, duplicate }: Props) {
       setHeadersText(editing.headers && Object.keys(editing.headers).length ? JSON.stringify(editing.headers, null, 2) : '');
       setModels(JSON.parse(JSON.stringify(editing.models)));
     } else if (duplicate) {
+      const def = TYPES.find(t => t.type === duplicate.type)!;
       setType(duplicate.type);
       setName(`${duplicate.name} 副本`);
       setPid(`${duplicate.id}-copy`);
+      setPidTouched(true);
       setBaseUrl(duplicate.baseUrl);
       setApiKey('');
       setApiType(duplicate.api);
@@ -62,9 +67,11 @@ export function ProviderModal({ open, onClose, editing, duplicate }: Props) {
       setHeadersText(duplicate.headers && Object.keys(duplicate.headers).length ? JSON.stringify(duplicate.headers, null, 2) : '');
       setModels(JSON.parse(JSON.stringify(duplicate.models)));
     } else {
+      const def = TYPES.find(t => t.type === 'openai-compatible')!;
       setType('openai-compatible');
       setName('');
       setPid('');
+      setPidTouched(false);
       setBaseUrl(def.baseUrl);
       setApiKey('');
       setApiType(def.api);
@@ -85,35 +92,51 @@ export function ProviderModal({ open, onClose, editing, duplicate }: Props) {
 
   const onNameChange = (v: string) => {
     setName(v);
-    if (!editing && !pid) {
+    if (!editing && !pidTouched) {
       setPid(v.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''));
     }
   };
 
   const save = async () => {
+    setError('');
     let headers: Record<string, string> = {};
     try {
       const v = headersText.trim();
-      if (v) headers = JSON.parse(v);
+      if (v) {
+        const parsed = JSON.parse(v);
+        if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object' || Object.values(parsed).some(value => typeof value !== 'string')) {
+          setError('Headers 必须是字符串键值对 JSON 对象');
+          return;
+        }
+        headers = parsed;
+      }
     } catch { setError('Headers 不是合法 JSON'); return; }
     const id = (editing ? editing.id : pid).trim();
     if (!name.trim()) { setError('供应商名称不能为空'); return; }
-    if (!id) { setError('Provider ID 不能为空（中文名需手动填写 ID）'); return; }
+    if (!id) { setError('Provider ID 不能为空（中文名需手动填写 ID）'); setShowAdv(true); return; }
+    if (!editing && state?.providers.some(provider => provider.id === id)) { setError(`Provider ID “${id}” 已存在`); setShowAdv(true); return; }
     if (!baseUrl.trim()) { setError('Base URL 不能为空'); return; }
     if (!models.length) { setError('至少需要一个模型'); return; }
-    const r = await api.saveProvider({
-      id, name: name.trim(), type, api: apiType, baseUrl: baseUrl.trim(),
-      apiKey: apiKey.trim() || undefined, authHeader, headers, models, enabled: editing?.enabled ?? true,
-    });
-    if (r.ok) { toast(editing ? '已保存' : '已添加供应商'); onClose(); refresh(); }
-    else setError(r.error || '保存失败');
+    setSaving(true);
+    try {
+      const r = await api.saveProvider({
+        id, name: name.trim(), type, api: apiType, baseUrl: baseUrl.trim(),
+        apiKey: apiKey.trim() || undefined, authHeader, headers, models, enabled: editing?.enabled ?? true,
+      });
+      if (r.ok) { toast(editing ? '已保存到编辑区' : '已添加到编辑区'); onClose(); await refresh(); }
+      else setError(r.error || '保存失败');
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
     <>
       <Dialog open={open} onOpenChange={onClose}>
-        <DialogContent className="max-w-2xl max-h-[88vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl max-h-[88vh] flex flex-col overflow-hidden">
           <DialogHeader><DialogTitle>{editing ? '编辑供应商' : duplicate ? '复制供应商' : '添加供应商'}</DialogTitle></DialogHeader>
+
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
 
           {!editing && (
             <div className="grid grid-cols-4 gap-2">
@@ -149,7 +172,14 @@ export function ProviderModal({ open, onClose, editing, duplicate }: Props) {
           <div className="flex items-center justify-between">
             <Label className="text-sm font-medium">模型</Label>
             <div className="flex gap-2">
-              <Button size="sm" variant="outline" onClick={() => setShowFetch(true)}>
+              <Button size="sm" variant="outline" onClick={() => {
+                try {
+                  const parsed = headersText.trim() ? JSON.parse(headersText) : {};
+                  if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object' || Object.values(parsed).some(value => typeof value !== 'string')) throw new Error();
+                  setError('');
+                  setShowFetch(true);
+                } catch { setError('请先修正自定义 Headers JSON'); setShowAdv(true); }
+              }}>
                 <RefreshCw className="size-3.5" /> 拉取模型列表
               </Button>
               <Button size="sm" variant="ghost" onClick={() => setModelModalIdx(models.length)}>
@@ -173,8 +203,8 @@ export function ProviderModal({ open, onClose, editing, duplicate }: Props) {
                 {models.map((m, i) => (
                   <TableRow key={i}>
                     <TableCell className="font-mono text-[12px]">{m.id}</TableCell>
-                    <TableCell className="text-muted-foreground">{m.contextWindow ? `${Math.round(m.contextWindow / 1000)}K` : '—'}</TableCell>
-                    <TableCell className="text-muted-foreground">{m.maxTokens ? `${Math.round(m.maxTokens / 1000)}K` : '—'}</TableCell>
+                    <TableCell className="text-muted-foreground" title={m.limitsEstimated ? '通用估值，需确认' : undefined}>{m.contextWindow ? `${m.limitsEstimated ? '~' : ''}${Math.round(m.contextWindow / 1000)}K` : '—'}</TableCell>
+                    <TableCell className="text-muted-foreground" title={m.limitsEstimated ? '通用估值，需确认' : undefined}>{m.maxTokens ? `${m.limitsEstimated ? '~' : ''}${Math.round(m.maxTokens / 1000)}K` : '—'}</TableCell>
                     <TableCell>{m.reasoning ? '✓' : '—'}</TableCell>
                     <TableCell className="text-right whitespace-nowrap">
                       <Button size="sm" variant="ghost" onClick={() => setModelModalIdx(i)}>编辑</Button>
@@ -198,7 +228,7 @@ export function ProviderModal({ open, onClose, editing, duplicate }: Props) {
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label>Provider ID</Label>
-                  <Input value={pid} onChange={e => setPid(e.target.value)} disabled={!!editing} placeholder="按名称自动生成" spellCheck={false} />
+                  <Input value={pid} onChange={e => { setPidTouched(true); setPid(e.target.value); }} disabled={!!editing} placeholder="按名称自动生成" spellCheck={false} />
                 </div>
                 <div className="space-y-1.5">
                   <Label>API 协议</Label>
@@ -222,11 +252,12 @@ export function ProviderModal({ open, onClose, editing, duplicate }: Props) {
               </div>
             </div>
           )}
+          </div>
 
-          <DialogFooter>
+          <DialogFooter className="border-t pt-4">
             {error && <span className="mr-auto text-xs text-destructive">{error}</span>}
             <Button variant="outline" onClick={onClose}>取消</Button>
-            <Button onClick={save}>保存</Button>
+            <Button onClick={save} disabled={saving}>{saving ? '保存中…' : '保存'}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -1,7 +1,11 @@
 {
   "name": "omp-provider-switcher",
-  "version": "2.0.0",
   "private": true,
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "cd web && bunx tsc --noEmit -p tsconfig.json",
+    "check:rust": "cargo check --manifest-path tauri/Cargo.toml"
+  },
   "dependencies": {
     "yaml": "^2.5.0"
   },

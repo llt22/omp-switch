@@ -2157,9 +2157,8 @@ dependencies = [
 
 [[package]]
 name = "omp-switch"
-version = "0.1.0"
+version = "0.1.5"
 dependencies = [
- "libc",
  "tauri",
  "tauri-build",
  "tauri-plugin-shell",
