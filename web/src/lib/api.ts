@@ -76,13 +76,13 @@ export const api = {
   exportYaml: () => rpc<{ ok: boolean; yaml?: string }>('/api/export'),
 };
 
-export function defaultModel(id: string): ModelCfg {
+export function defaultModel(id: string, providerType?: string): ModelCfg {
   return {
     id,
     reasoning: true,
-    contextWindow: 250000,
+    contextWindow: providerType === 'anthropic' ? 1000000 : 250000,
     maxTokens: 128000,
     thinking: { mode: 'effort', minLevel: 'low', maxLevel: 'high' },
-    compat: { supportsReasoningEffort: true, maxTokensField: 'max_completion_tokens' },
+    compat: { supportsReasoningEffort: true, maxTokensField: providerType === 'anthropic' ? 'max_tokens' : 'max_completion_tokens' },
   };
 }

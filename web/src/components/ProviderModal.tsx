@@ -197,8 +197,8 @@ export function ProviderModal({ open, onClose, editing, duplicate }: Props) {
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
-                  <Label>Provider ID <span className="text-muted-foreground">（按名称自动生成，可修改）</span></Label>
-                  <Input value={pid} onChange={e => setPid(e.target.value)} disabled={!!editing} placeholder="auto" spellCheck={false} />
+                  <Label>Provider ID</Label>
+                  <Input value={pid} onChange={e => setPid(e.target.value)} disabled={!!editing} placeholder="按名称自动生成" spellCheck={false} />
                 </div>
                 <div className="space-y-1.5">
                   <Label>API 协议</Label>
@@ -234,6 +234,7 @@ export function ProviderModal({ open, onClose, editing, duplicate }: Props) {
       {modelModalIdx !== null && (
         <ModelModal
           model={models[modelModalIdx]}
+          providerType={type}
           onClose={() => setModelModalIdx(null)}
           onSave={(m) => {
             const next = [...models];
@@ -255,7 +256,7 @@ export function ProviderModal({ open, onClose, editing, duplicate }: Props) {
         providerId={editing?.id}
         onAdd={(ids) => {
           const have = new Set(models.map(m => m.id));
-          setModels([...models, ...ids.filter(id => !have.has(id)).map(defaultModel)]);
+          setModels([...models, ...ids.filter(id => !have.has(id)).map(id => defaultModel(id, type))]);
           setShowFetch(false);
         }}
       />

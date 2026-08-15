@@ -15,6 +15,7 @@ export function ProviderCard({ p, live, onEdit, onTest, onDuplicate }: {
 }) {
   const { refresh, toast } = useApp();
   const [busy, setBusy] = useState(false);
+  const [confirmDel, setConfirmDel] = useState(false);
 
   const toggle = async () => {
     setBusy(true);
@@ -25,7 +26,12 @@ export function ProviderCard({ p, live, onEdit, onTest, onDuplicate }: {
   };
 
   const del = async () => {
-    if (!confirm(`删除供应商「${p.name}」？`)) return;
+    if (!confirmDel) {
+      setConfirmDel(true);
+      setTimeout(() => setConfirmDel(false), 2000);
+      return;
+    }
+    setConfirmDel(false);
     await api.deleteProvider(p.id);
     toast('已删除');
     refresh();
@@ -72,8 +78,8 @@ export function ProviderCard({ p, live, onEdit, onTest, onDuplicate }: {
           <Button size="sm" variant="outline" onClick={onDuplicate}>
             <Copy className="size-3.5" /> 复制
           </Button>
-          <Button size="sm" variant="outline" className="text-destructive hover:text-destructive" onClick={del}>
-            <Trash2 className="size-3.5" />
+          <Button size="sm" variant={confirmDel ? 'destructive' : 'outline'} className={confirmDel ? '' : 'text-destructive hover:text-destructive'} onClick={del}>
+            <Trash2 className="size-3.5" /> {confirmDel ? '确认删除？' : ''}
           </Button>
         </div>
       </div>

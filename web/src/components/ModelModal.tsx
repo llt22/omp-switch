@@ -12,16 +12,18 @@ import type { ModelCfg } from '@/lib/api';
 
 interface Props {
   model: ModelCfg | undefined;
+  providerType?: string;
   onClose: () => void;
   onSave: (m: ModelCfg) => void;
 }
 
 const LEVELS = ['low', 'medium', 'high', 'xhigh', 'max'];
 
-export function ModelModal({ model, onClose, onSave }: Props) {
+export function ModelModal({ model, providerType, onClose, onSave }: Props) {
+  const isAnthropic = providerType === 'anthropic';
   const [id, setId] = useState(model?.id ?? '');
   const [name, setName] = useState(model?.name ?? '');
-  const [ctx, setCtx] = useState(String(model?.contextWindow ?? 250000));
+  const [ctx, setCtx] = useState(String(model?.contextWindow ?? (isAnthropic ? 1000000 : 250000)));
   const [max, setMax] = useState(String(model?.maxTokens ?? 128000));
   const [inputType, setInputType] = useState((model?.input ?? ['text']).join(','));
   const [reasoning, setReasoning] = useState(!!model?.reasoning);
