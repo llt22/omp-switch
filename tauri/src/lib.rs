@@ -4,6 +4,25 @@ use tauri::{
     Manager,
 };
 
+/// 清理占用 8642 端口的旧 sidecar 进程
+fn kill_stale_server() {
+    use std::process::Command;
+    if let Ok(output) = Command::new("lsof")
+        .args(["-ti", ":8642"])
+        .output()
+    {
+        let pids = String::from_utf8_lossy(&output.stdout);
+        for pid in pids.split_whitespace() {
+            if let Ok(pid_num) = pid.parse::<i32>() {
+                unsafe { libc::kill(pid_num, libc::SIGTERM); }
+            }
+        }
+        if !pids.is_empty() {
+            std::thread::sleep(std::time::Duration::from_millis(500));
+        }
+    }
+}
+
 /// 启动本地服务（sidecar），失败时窗口仍可用（复用已在运行的服务）
 fn spawn_server(app: &tauri::App) -> Option<tauri_plugin_shell::process::CommandChild> {
     use tauri_plugin_shell::ShellExt;
@@ -27,7 +46,8 @@ pub fn run() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .setup(|app| {
-            // 先启动服务，窗口随后加载本地 URL
+            // 清理旧版 sidecar 后再启动新的
+            kill_stale_server();
             let _server = spawn_server(app);
 
             // 系统托盘：显示窗口 / 退出
