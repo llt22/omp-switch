@@ -66,6 +66,7 @@ function loadStore(): Store {
   try { return JSON.parse(readFileSync(STORE_FILE, 'utf8')); } catch { return { providers: [] }; }
 }
 function saveStore(s: Store) {
+  mkdirSync(DATA_DIR, { recursive: true });
   writeFileSync(STORE_FILE, JSON.stringify(s, null, 2));
   try { chmodSync(STORE_FILE, 0o600); } catch {}
 }
