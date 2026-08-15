@@ -5,11 +5,54 @@ use tauri::{
     Manager,
 };
 
+/// 清理异常退出后仍占用固定端口的旧 sidecar，不影响其他程序。
+#[cfg(all(not(debug_assertions), unix))]
+fn kill_stale_server() {
+    use std::{path::Path, process::Command, thread, time::Duration};
+
+    let Ok(output) = Command::new("lsof")
+        .args(["-tiTCP:8642", "-sTCP:LISTEN"])
+        .output()
+    else {
+        return;
+    };
+
+    let mut killed = false;
+    for pid in String::from_utf8_lossy(&output.stdout).split_whitespace() {
+        let Ok(process) = Command::new("ps")
+            .args(["-p", pid, "-o", "command="])
+            .output()
+        else {
+            continue;
+        };
+        let command = String::from_utf8_lossy(&process.stdout);
+        let executable = command.split_whitespace().next().unwrap_or_default();
+        if Path::new(executable)
+            .file_name()
+            .and_then(|name| name.to_str())
+            != Some("omp-switch-server")
+        {
+            continue;
+        }
+
+        if Command::new("kill").args(["-TERM", pid]).status().is_ok() {
+            killed = true;
+        }
+    }
+
+    if killed {
+        thread::sleep(Duration::from_millis(500));
+    }
+}
+
 /// 发布版启动本地服务，并在确认服务已成功监听后交给应用生命周期管理。
 #[cfg(not(debug_assertions))]
 fn spawn_server(app: &tauri::App) -> Result<tauri_plugin_shell::process::CommandChild, String> {
     use tauri_plugin_shell::process::CommandEvent;
     use tauri_plugin_shell::ShellExt;
+    #[cfg(unix)]
+    kill_stale_server();
+
     let cmd = app
         .shell()
         .sidecar("omp-switch-server")
