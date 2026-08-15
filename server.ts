@@ -452,17 +452,21 @@ const server = Bun.serve({
     }
 
     if (p === '/api/state' && req.method === 'GET') {
-      const store = loadStore();
-      if (!store.providers.length && existsSync(MODELS_YML)) {
-        store.providers = yamlToProviders(readFileSync(MODELS_YML, 'utf8'));
-        saveStore(store);
+      try {
+        const store = loadStore();
+        if (!store.providers.length && existsSync(MODELS_YML)) {
+          store.providers = yamlToProviders(readFileSync(MODELS_YML, 'utf8'));
+          saveStore(store);
+        }
+        return json({
+          providers: store.providers.map((x) => ({ ...x, apiKeyMasked: maskKey(x.apiKey), apiKey: undefined })),
+          apiOptions: API_OPTIONS,
+          current: currentState(),
+          backups: listBackups(),
+        });
+      } catch (e) {
+        return json({ error: `加载状态失败: ${e instanceof Error ? e.message : String(e)}` }, 500);
       }
-      return json({
-        providers: store.providers.map((x) => ({ ...x, apiKeyMasked: maskKey(x.apiKey), apiKey: undefined })),
-        apiOptions: API_OPTIONS,
-        current: currentState(),
-        backups: listBackups(),
-      });
     }
 
     if (p === '/api/providers' && req.method === 'POST') {
@@ -560,9 +564,3 @@ const server = Bun.serve({
 console.log(`omp 供应商配置器运行中: http://127.0.0.1:${PORT}`);
 migrateLegacy();
 
-// 双击/直接运行后自动打开浏览器
-if (!process.env.OMP_SWITCHER_NO_OPEN) {
-  setTimeout(() => {
-    try { Bun.spawnSync(['open', `http://127.0.0.1:${PORT}`]); } catch {}
-  }, 400);
-}

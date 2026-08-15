@@ -16,10 +16,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [toastMsg, setToastMsg] = useState<{ msg: string; type: 'ok' | 'err' } | null>(null);
 
-  const refresh = useCallback(async () => {
-    const s = await api.state();
-    setState(s);
-    setLoading(false);
+  const refresh = useCallback(async (retries = 3) => {
+    try {
+      const s = await api.state();
+      if (s && !('error' in s)) {
+        setState(s);
+        setLoading(false);
+      } else if (retries > 0) {
+        setTimeout(() => refresh(retries - 1), 800);
+      } else {
+        setState(null);
+        setLoading(false);
+      }
+    } catch {
+      if (retries > 0) {
+        setTimeout(() => refresh(retries - 1), 800);
+      } else {
+        setState(null);
+        setLoading(false);
+      }
+    }
   }, []);
 
   const toast = useCallback((msg: string, type: 'ok' | 'err' = 'ok') => {
