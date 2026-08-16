@@ -46,8 +46,9 @@ export function ProviderCard({ p, live, onEdit, onTest, onDuplicate }: {
     <Card className="p-4 transition-colors hover:border-primary/40">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <span className="font-semibold text-[15px] tracking-tight">{p.name}</span>
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <code className="break-all font-mono text-[15px] font-semibold tracking-tight">{p.id}</code>
+            {p.name !== p.id && <span className="break-all text-sm text-muted-foreground">{p.name}</span>}
             <Badge variant="secondary" className="text-[11px]">{TYPE_LABEL[p.type] ?? p.type}</Badge>
             {live && <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100">生效中</Badge>}
             {!p.enabled && <Badge variant="outline" className="text-amber-600">不参与下次应用</Badge>}

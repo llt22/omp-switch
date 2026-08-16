@@ -27,7 +27,7 @@ export function ProviderModal({ open, onClose, editing, duplicate }: Props) {
   const [type, setType] = useState<'openai-compatible' | 'anthropic' | 'openai' | 'gemini'>('openai-compatible');
   const [name, setName] = useState('');
   const [pid, setPid] = useState('');
-  const [pidTouched, setPidTouched] = useState(false);
+  const [nameTouched, setNameTouched] = useState(false);
   const [baseUrl, setBaseUrl] = useState('');
   const [apiKey, setApiKey] = useState('');
   const [apiType, setApiType] = useState('openai-completions');
@@ -47,7 +47,7 @@ export function ProviderModal({ open, onClose, editing, duplicate }: Props) {
       setType(editing.type);
       setName(editing.name);
       setPid(editing.id);
-      setPidTouched(true);
+      setNameTouched(true);
       setBaseUrl(editing.baseUrl);
       setApiKey('');
       setApiType(editing.api);
@@ -56,10 +56,11 @@ export function ProviderModal({ open, onClose, editing, duplicate }: Props) {
       setModels(JSON.parse(JSON.stringify(editing.models)));
     } else if (duplicate) {
       const def = TYPES.find(t => t.type === duplicate.type)!;
+      const nextId = `${duplicate.id}-copy`;
       setType(duplicate.type);
-      setName(`${duplicate.name} 副本`);
-      setPid(`${duplicate.id}-copy`);
-      setPidTouched(true);
+      setName(nextId);
+      setPid(nextId);
+      setNameTouched(false);
       setBaseUrl(duplicate.baseUrl);
       setApiKey('');
       setApiType(duplicate.api);
@@ -71,7 +72,7 @@ export function ProviderModal({ open, onClose, editing, duplicate }: Props) {
       setType('openai-compatible');
       setName('');
       setPid('');
-      setPidTouched(false);
+      setNameTouched(false);
       setBaseUrl(def.baseUrl);
       setApiKey('');
       setApiType(def.api);
@@ -90,11 +91,9 @@ export function ProviderModal({ open, onClose, editing, duplicate }: Props) {
     if (!editing) { setBaseUrl(def.baseUrl); setAuthHeader(def.auth); }
   };
 
-  const onNameChange = (v: string) => {
-    setName(v);
-    if (!editing && !pidTouched) {
-      setPid(v.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''));
-    }
+  const onPidChange = (value: string) => {
+    setPid(value);
+    if (!nameTouched) setName(value);
   };
 
   const save = async () => {
@@ -112,15 +111,15 @@ export function ProviderModal({ open, onClose, editing, duplicate }: Props) {
       }
     } catch { setError('Headers 不是合法 JSON'); return; }
     const id = (editing ? editing.id : pid).trim();
-    if (!name.trim()) { setError('供应商名称不能为空'); return; }
-    if (!id) { setError('Provider ID 不能为空（中文名需手动填写 ID）'); setShowAdv(true); return; }
-    if (!editing && state?.providers.some(provider => provider.id === id)) { setError(`Provider ID “${id}” 已存在`); setShowAdv(true); return; }
+    const displayName = name.trim() || id;
+    if (!id) { setError('Provider ID 不能为空'); return; }
+    if (!editing && state?.providers.some(provider => provider.id === id)) { setError(`Provider ID “${id}” 已存在`); return; }
     if (!baseUrl.trim()) { setError('Base URL 不能为空'); return; }
     if (!models.length) { setError('至少需要一个模型'); return; }
     setSaving(true);
     try {
       const r = await api.saveProvider({
-        id, name: name.trim(), type, api: apiType, baseUrl: baseUrl.trim(),
+        id, name: displayName, type, api: apiType, baseUrl: baseUrl.trim(),
         apiKey: apiKey.trim() || undefined, authHeader, headers, models, enabled: editing?.enabled ?? true,
       });
       if (r.ok) { toast(editing ? '已保存到编辑区' : '已添加到编辑区'); onClose(); await refresh(); }
@@ -133,7 +132,7 @@ export function ProviderModal({ open, onClose, editing, duplicate }: Props) {
   return (
     <>
       <Dialog open={open} onOpenChange={onClose}>
-        <DialogContent className="max-w-2xl max-h-[88vh] flex flex-col overflow-hidden">
+        <DialogContent className="sm:max-w-4xl max-h-[88vh] flex flex-col overflow-hidden">
           <DialogHeader><DialogTitle>{editing ? '编辑供应商' : duplicate ? '复制供应商' : '添加供应商'}</DialogTitle></DialogHeader>
 
           <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
@@ -153,13 +152,18 @@ export function ProviderModal({ open, onClose, editing, duplicate }: Props) {
 
           <div className="mt-4 grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label>供应商名称 <span className="text-destructive">*</span></Label>
-              <Input value={name} onChange={e => onNameChange(e.target.value)} placeholder="例如：我的 OpenAI 网关" />
+              <Label>Provider ID（OMP 中显示） <span className="text-destructive">*</span></Label>
+              <Input value={pid} onChange={e => onPidChange(e.target.value)} disabled={!!editing} placeholder="例如：openai" spellCheck={false} />
             </div>
             <div className="space-y-1.5">
-              <Label>Base URL <span className="text-destructive">*</span></Label>
-              <Input value={baseUrl} onChange={e => setBaseUrl(e.target.value)} placeholder="https://api.example.com/v1" spellCheck={false} />
+              <Label>面板名称（可选，仅本应用）</Label>
+              <Input value={name} onChange={e => { setNameTouched(true); setName(e.target.value); }} placeholder="默认与 Provider ID 相同" />
             </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Base URL <span className="text-destructive">*</span></Label>
+            <Input value={baseUrl} onChange={e => setBaseUrl(e.target.value)} placeholder="https://api.example.com/v1" spellCheck={false} />
           </div>
 
           <div className="space-y-1.5">
@@ -202,7 +206,7 @@ export function ProviderModal({ open, onClose, editing, duplicate }: Props) {
               <TableBody>
                 {models.map((m, i) => (
                   <TableRow key={i}>
-                    <TableCell className="font-mono text-[12px]">{m.id}</TableCell>
+                    <TableCell className="font-mono text-[12px] whitespace-normal break-all">{m.id}</TableCell>
                     <TableCell className="text-muted-foreground" title={m.limitsEstimated ? '通用估值，需确认' : undefined}>{m.contextWindow ? `${m.limitsEstimated ? '~' : ''}${Math.round(m.contextWindow / 1000)}K` : '—'}</TableCell>
                     <TableCell className="text-muted-foreground" title={m.limitsEstimated ? '通用估值，需确认' : undefined}>{m.maxTokens ? `${m.limitsEstimated ? '~' : ''}${Math.round(m.maxTokens / 1000)}K` : '—'}</TableCell>
                     <TableCell>{m.reasoning ? '✓' : '—'}</TableCell>
@@ -225,22 +229,16 @@ export function ProviderModal({ open, onClose, editing, duplicate }: Props) {
           </Button>
           {showAdv && (
             <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label>Provider ID</Label>
-                  <Input value={pid} onChange={e => { setPidTouched(true); setPid(e.target.value); }} disabled={!!editing} placeholder="按名称自动生成" spellCheck={false} />
-                </div>
-                <div className="space-y-1.5">
-                  <Label>API 协议</Label>
-                  <Select value={apiType} onValueChange={setApiType}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {Object.entries(state?.apiOptions ?? {}).map(([k, v]) => (
-                        <SelectItem key={k} value={k}>{v.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+              <div className="space-y-1.5">
+                <Label>API 协议</Label>
+                <Select value={apiType} onValueChange={setApiType}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(state?.apiOptions ?? {}).map(([k, v]) => (
+                      <SelectItem key={k} value={k}>{v.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="flex items-center gap-2">
                 <Switch checked={authHeader} onCheckedChange={setAuthHeader} />

@@ -559,6 +559,7 @@ const server = Bun.serve({
 
     if (p === '/api/providers' && req.method === 'POST') {
       const body = (await req.json()) as Partial<ProviderCfg>;
+      body.name = body.name?.trim() || body.id?.trim();
       const err = validateProvider(body);
       if (err) return json({ error: err }, 400);
       const store = loadStore();

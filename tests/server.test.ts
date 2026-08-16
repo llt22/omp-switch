@@ -73,6 +73,23 @@ afterAll(() => {
 });
 
 describe('配置业务闭环', () => {
+  test('供应商名称为空时默认使用 Provider ID', async () => {
+    const home = makeHome();
+    const { baseUrl } = await startServer(home);
+    const unnamed = provider('alpha', 'https://alpha.example.com/v1');
+    delete (unnamed as Partial<typeof unnamed>).name;
+
+    const result = await fetch(`${baseUrl}/api/providers`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(unnamed),
+    }).then(r => r.json()) as { ok: boolean };
+    expect(result.ok).toBe(true);
+
+    const state = await fetch(`${baseUrl}/api/state`).then(r => r.json()) as {
+      providers: { id: string; name: string }[];
+    };
+    expect(state.providers[0]).toMatchObject({ id: 'alpha', name: 'alpha' });
+  });
+
   test('导入导出保留未知字段，并且状态接口不暴露原始 YAML', async () => {
     const home = makeHome();
     writeFileSync(join(home, '.omp', 'agent', 'models.yml'), `providers:
