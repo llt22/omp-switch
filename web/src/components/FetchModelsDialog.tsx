@@ -4,6 +4,15 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { api } from '@/lib/api';
 
+const modelIdCollator = new Intl.Collator('en', { numeric: true, sensitivity: 'base' });
+
+function sortModelIds(ids: string[], existing: Set<string>) {
+  return [...ids].sort((a, b) => {
+    const existingDiff = Number(existing.has(b)) - Number(existing.has(a));
+    return existingDiff || modelIdCollator.compare(a, b);
+  });
+}
+
 interface Props {
   open: boolean;
   onClose: () => void;
@@ -31,8 +40,9 @@ export function FetchModelsDialog({ open, onClose, baseUrl, apiKey, apiType, hea
       if (cancelled) return;
       setLoading(false);
       if (r.ok && r.models) {
-        setModels(r.models);
-        setPicked(new Set(r.models.filter(m => existing.has(m))));
+        const sortedModels = sortModelIds(r.models, existing);
+        setModels(sortedModels);
+        setPicked(new Set(sortedModels.filter(m => existing.has(m))));
       } else {
         setError(r.error || '拉取失败');
       }
@@ -75,7 +85,7 @@ export function FetchModelsDialog({ open, onClose, baseUrl, apiKey, apiType, hea
         <DialogFooter>
           <span className="mr-auto text-xs text-primary">已选 {picked.size}</span>
           <Button variant="outline" onClick={onClose}>取消</Button>
-          <Button disabled={!picked.size} onClick={() => onAdd([...picked])}>添加选中</Button>
+          <Button disabled={!picked.size} onClick={() => onAdd(models.filter(m => picked.has(m)))}>添加选中</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
