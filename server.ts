@@ -575,10 +575,11 @@ const server = Bun.serve({
       return json({ ok: true, id: body.id });
     }
 
-    const del = p.match(/^\/api\/providers\/([\w-]+)$/);
+    const del = p.match(/^\/api\/providers\/([^/]+)$/);
     if (del && req.method === 'DELETE') {
+      const id = decodeURIComponent(del[1]);
       const store = loadStore();
-      store.providers = store.providers.filter((x) => x.id !== del[1]);
+      store.providers = store.providers.filter((x) => x.id !== id);
       saveStore(store);
       return json({ ok: true });
     }

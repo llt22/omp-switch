@@ -87,7 +87,7 @@ async function rpc<T = unknown>(path: string, method = 'GET', body?: unknown): P
 export const api = {
   state: () => rpc<State>('/api/state'),
   saveProvider: (p: Partial<ProviderCfg>) => rpc<{ ok: boolean; id?: string; error?: string }>('/api/providers', 'POST', p),
-  deleteProvider: (id: string) => rpc<{ ok: boolean; error?: string }>(`/api/providers/${id}`, 'DELETE'),
+  deleteProvider: (id: string) => rpc<{ ok: boolean; error?: string }>(`/api/providers/${encodeURIComponent(id)}`, 'DELETE'),
   apply: () => rpc<{ ok: boolean; backup?: string; error?: string }>('/api/apply', 'POST'),
   restore: (name: string) => rpc<{ ok: boolean; error?: string }>('/api/restore', 'POST', { name }),
   fetchModels: (baseUrl: string, apiKey: string | undefined, api: string, headers?: Record<string, string>, providerId?: string) =>

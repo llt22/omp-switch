@@ -2,10 +2,17 @@ import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Pencil, Trash2, FlaskConical, Power, PowerOff, Copy } from 'lucide-react';
 import { api, TYPE_LABEL, type ProviderCfg } from '@/lib/api';
 import { useApp } from '@/lib/app';
-
 export function ProviderCard({ p, live, onEdit, onTest, onDuplicate }: {
   p: ProviderCfg;
   live: boolean;
@@ -15,6 +22,8 @@ export function ProviderCard({ p, live, onEdit, onTest, onDuplicate }: {
 }) {
   const { refresh, toast } = useApp();
   const [busy, setBusy] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const toggle = async () => {
     setBusy(true);
@@ -29,14 +38,19 @@ export function ProviderCard({ p, live, onEdit, onTest, onDuplicate }: {
   };
 
   const del = async () => {
-    const message = live
-      ? '删除后仍需“应用到 omp”才会从当前配置移除。确认删除此供应商？'
-      : '确认删除此供应商？';
-    if (!confirm(message)) return;
-    const r = await api.deleteProvider(p.id);
-    if (!r.ok) { toast(r.error || '删除失败', 'err'); return; }
-    toast('已从编辑区删除');
-    await refresh();
+    setDeleting(true);
+    try {
+      const r = await api.deleteProvider(p.id);
+      if (!r.ok) {
+        toast(r.error || '删除失败', 'err');
+        return;
+      }
+      toast('已从编辑区删除');
+      setDeleteOpen(false);
+      await refresh();
+    } finally {
+      setDeleting(false);
+    }
   };
 
   const chips = p.models.slice(0, 3);
@@ -81,11 +95,42 @@ export function ProviderCard({ p, live, onEdit, onTest, onDuplicate }: {
           <Button size="sm" variant="outline" onClick={onDuplicate}>
             <Copy className="size-3.5" /> 复制
           </Button>
-          <Button size="sm" variant="outline" className="text-destructive hover:text-destructive" onClick={del}>
+          <Button
+            size="sm"
+            variant="outline"
+            className="text-destructive hover:text-destructive"
+            onClick={() => setDeleteOpen(true)}
+          >
             <Trash2 className="size-3.5" /> 删除
           </Button>
         </div>
       </div>
+
+      <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>确认删除供应商</DialogTitle>
+            <DialogDescription className="space-y-2 pt-1 text-sm text-foreground">
+              <span className="block">
+                确认删除供应商 <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">{p.name || p.id}</code>？
+              </span>
+              {live && (
+                <span className="block text-xs text-amber-600">
+                  注意：该供应商当前生效中，删除后仍需点击顶部“应用到 omp”才会从 models.yml 移除。
+                </span>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteOpen(false)} disabled={deleting}>
+              取消
+            </Button>
+            <Button variant="destructive" onClick={del} disabled={deleting}>
+              {deleting ? '删除中…' : '确认删除'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }

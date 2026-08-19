@@ -216,4 +216,20 @@ describe('配置业务闭环', () => {
       upstream.stop(true);
     }
   });
+
+  test('删除供应商支持编码后的特殊 ID', async () => {
+    const home = makeHome();
+    const id = 'gateway.v2_test';
+    writeFileSync(join(home, '.omp', 'omp-switch', 'providers.json'), JSON.stringify({
+      providers: [provider(id, 'https://gateway.example.com/v1'), provider('keep', 'https://keep.example.com/v1')],
+    }));
+    const { baseUrl } = await startServer(home);
+
+    const response = await fetch(`${baseUrl}/api/providers/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ ok: true });
+
+    const state = await fetch(`${baseUrl}/api/state`).then(r => r.json()) as { providers: { id: string }[] };
+    expect(state.providers.map(p => p.id)).toEqual(['keep']);
+  });
 });
