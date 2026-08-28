@@ -1,12 +1,9 @@
-import { buildModel } from '@oh-my-pi/pi-catalog/build';
-import { buildModelReferenceIndex, inheritReferenceThinking, resolveModelReference } from '@oh-my-pi/pi-catalog/identity';
-import { modelFamilyToken } from '@oh-my-pi/pi-catalog/identity/family';
-import {
-  fetchWellKnownModels,
-  mapModelsDevToModels,
-  MODELS_DEV_PROVIDER_DESCRIPTORS,
-} from '@oh-my-pi/pi-catalog/provider-models/openai-compat';
-import type { Api, Model, ModelSpec, ThinkingConfig } from '@oh-my-pi/pi-catalog/types';
+import { buildModel } from './catalog/build';
+import { fetchCatalogJson } from './catalog/fetch';
+import { buildModelReferenceIndex, inheritReferenceThinking, resolveModelReference } from './catalog/identity';
+import { modelFamilyToken } from './catalog/identity/family';
+import { parseCatalogPayload } from './catalog/mapper';
+import type { Api, Model, ModelSpec, ThinkingConfig } from './catalog/types';
 
 export interface ResolvedThinking {
   mode: string;
@@ -128,11 +125,11 @@ async function loadCatalogIndexes(): Promise<CatalogIndexes> {
   if (indexesPromise) return indexesPromise;
 
   indexesPromise = (async () => {
-    const payload = await fetchWellKnownModels(catalogFetch);
+    const payload = await fetchCatalogJson(catalogFetch);
     if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
       throw new Error('OMP 在线模型目录返回了无效数据');
     }
-    const specs = mapModelsDevToModels(payload as Record<string, unknown>, MODELS_DEV_PROVIDER_DESCRIPTORS);
+    const specs = parseCatalogPayload(payload);
     if (!specs.length) throw new Error('OMP 在线模型目录中没有可用模型');
     const models = specs.map(spec => buildModel(spec));
     const officialByFamily = new Map<string, ReferenceIndex>();

@@ -5,7 +5,6 @@
     "": {
       "name": "omp-provider-switcher",
       "dependencies": {
-        "@oh-my-pi/pi-catalog": "18.0.8",
         "yaml": "^2.5.0",
       },
       "devDependencies": {
@@ -14,24 +13,6 @@
     },
   },
   "packages": {
-    "@oh-my-pi/omptype": ["@oh-my-pi/omptype@18.0.8", "", {}, "sha512-1g1Q8xAnrA62he2sP/JW84zZine7PvaXjOhgHcmauFvU2HSSIJHX5t8iF5+gcvX/s6P0h4wZSS/aGfVCHeMT4w=="],
-
-    "@oh-my-pi/pi-catalog": ["@oh-my-pi/pi-catalog@18.0.8", "", { "dependencies": { "@oh-my-pi/omptype": "18.0.8", "@oh-my-pi/pi-utils": "18.0.8" } }, "sha512-wLSCO7jYlO//tNzWNcGEnnzF9WH9s6VVwUYN1iyU9iQOh1IqKzYrd6RUjPD5PWDySEIdz2pVHcqZn6WhzrEaiQ=="],
-
-    "@oh-my-pi/pi-natives": ["@oh-my-pi/pi-natives@18.0.8", "", { "optionalDependencies": { "@oh-my-pi/pi-natives-darwin-arm64": "18.0.8", "@oh-my-pi/pi-natives-darwin-x64": "18.0.8", "@oh-my-pi/pi-natives-linux-arm64": "18.0.8", "@oh-my-pi/pi-natives-linux-x64": "18.0.8", "@oh-my-pi/pi-natives-win32-x64": "18.0.8" } }, "sha512-H+DkXduyXBotqov9puMV2V14E3LYSPeGyZAx0BPt+HqirXMR9LREWjTmy4I5X3Fgszars+N7J2VQ5t55/kbT4w=="],
-
-    "@oh-my-pi/pi-natives-darwin-arm64": ["@oh-my-pi/pi-natives-darwin-arm64@18.0.8", "", { "os": "darwin", "cpu": "arm64" }, "sha512-NUaJkzJwjO/ISewUm3AcW/AdiePGISwJmhLwJ21nwq9MGQFNNFTPxDKTfRSjpnKGJzRYXuu1unJxl6SLG84cgg=="],
-
-    "@oh-my-pi/pi-natives-darwin-x64": ["@oh-my-pi/pi-natives-darwin-x64@18.0.8", "", { "os": "darwin", "cpu": "x64" }, "sha512-/zvIKXgaHrC9lFHLkLsObGQSKbBktv3OLj09TfTD22uFjghZmmZ7iZk0PMts0hq1Kt0S9YQcbaBfKdpFDPs0vw=="],
-
-    "@oh-my-pi/pi-natives-linux-arm64": ["@oh-my-pi/pi-natives-linux-arm64@18.0.8", "", { "os": "linux", "cpu": "arm64" }, "sha512-U5E1hV5sEckmg0/PXzcMOUnMkawe3eMfhSWeL/LFmQPqiioTPRZrM307hFl26PIqKqeqJ3SGCzEgl+nmLqRAHQ=="],
-
-    "@oh-my-pi/pi-natives-linux-x64": ["@oh-my-pi/pi-natives-linux-x64@18.0.8", "", { "os": "linux", "cpu": "x64" }, "sha512-t5AWTA4E9R876x+ijgcN5hX27p0np4xdQnAuo20/Vj3uOBEUDwc+a+QQYD9YS54Gh/UhQN7FawRgvVjI4ojgag=="],
-
-    "@oh-my-pi/pi-natives-win32-x64": ["@oh-my-pi/pi-natives-win32-x64@18.0.8", "", { "os": "win32", "cpu": "x64" }, "sha512-16KDe4Jjh8jC1GIDMwlw5cQYYXu1WBf5Z/VGHs5QgGRLtaZ/GwPRaWXbdN22k5XAVaFKCCsyXF9Hdswq2oP4YA=="],
-
-    "@oh-my-pi/pi-utils": ["@oh-my-pi/pi-utils@18.0.8", "", { "dependencies": { "@oh-my-pi/pi-natives": "18.0.8" } }, "sha512-JmN6QAyiBpyWIuQ6ZFyntWkRb96C188j+ZdgukDYug7VElnH81lhMlySCoIPs++OIKxXEFz/s5KbmWR/vxnQ0g=="],
-
     "@tauri-apps/cli": ["@tauri-apps/cli@2.11.4", "", { "optionalDependencies": { "@tauri-apps/cli-darwin-arm64": "2.11.4", "@tauri-apps/cli-darwin-x64": "2.11.4", "@tauri-apps/cli-linux-arm-gnueabihf": "2.11.4", "@tauri-apps/cli-linux-arm64-gnu": "2.11.4", "@tauri-apps/cli-linux-arm64-musl": "2.11.4", "@tauri-apps/cli-linux-riscv64-gnu": "2.11.4", "@tauri-apps/cli-linux-x64-gnu": "2.11.4", "@tauri-apps/cli-linux-x64-musl": "2.11.4", "@tauri-apps/cli-win32-arm64-msvc": "2.11.4", "@tauri-apps/cli-win32-ia32-msvc": "2.11.4", "@tauri-apps/cli-win32-x64-msvc": "2.11.4" }, "bin": { "tauri": "tauri.js" } }, "sha512-R8xGtMpwyetawSqm9kYOuMmEqkhUbvcUy8n0aNXIxollKBLESUu5f4Fx+64hgASYm1H+jSWq6jCW6zqTnH6hqQ=="],
 
     "@tauri-apps/cli-darwin-arm64": ["@tauri-apps/cli-darwin-arm64@2.11.4", "", { "os": "darwin", "cpu": "arm64" }, "sha512-1ryOF3ZhpZ/nemHV5zVwBQBz9jDGKmKPvWPADOhc83ig0P4bMc2iER4NbC6r9sjeIZ6RVQ4g3RZIYvezhcl4TQ=="],

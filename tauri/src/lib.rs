@@ -110,7 +110,7 @@ pub fn run() {
     let server_child: Arc<Mutex<Option<tauri_plugin_shell::process::CommandChild>>> =
         Arc::new(Mutex::new(None));
     let server_child_for_setup = Arc::clone(&server_child);
-    let app = tauri::Builder::default()
+    let app = match tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .setup(move |app| {
             #[cfg(not(debug_assertions))]
@@ -156,7 +156,20 @@ pub fn run() {
             }
         })
         .build(tauri::generate_context!())
-        .expect("failed to build tauri app");
+    {
+        Ok(app) => app,
+        Err(e) => {
+            eprintln!("omp-switch 启动失败: {e}");
+            #[cfg(target_os = "macos")]
+            {
+                let msg = format!("omp-switch 启动失败：\n{e}").replace('"', "\\\"");
+                let _ = std::process::Command::new("osascript")
+                    .args(["-e", &format!("display alert \"omp-switch\" message \"{msg}\" as critical")])
+                    .output();
+            }
+            std::process::exit(1);
+        }
+    };
 
     app.run(move |_app_handle, event| {
         if matches!(
