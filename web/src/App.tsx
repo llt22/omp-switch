@@ -89,9 +89,8 @@ export default function App() {
       </header>
 
       {dirty && (
-        <div role="status" className="mb-4 flex items-center justify-between rounded-lg border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm text-amber-900">
-          <span>编辑区有尚未应用的更改，OMP 当前配置不会自动变化。</span>
-          <Button size="sm" onClick={apply} disabled={applying}>{applying ? '写入中…' : '立即应用'}</Button>
+        <div role="status" className="mb-4 rounded-lg border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm text-amber-900">
+          编辑区有尚未应用的更改，OMP 当前配置尚未变化。
         </div>
       )}
 
