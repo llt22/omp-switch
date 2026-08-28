@@ -217,6 +217,51 @@ describe('配置业务闭环', () => {
     }
   });
 
+  test('Anthropic 连通性测试传递自定义 Headers', async () => {
+    let receivedHeaders: Record<string, string | null> = {};
+    const upstream = Bun.serve({
+      port: 0,
+      fetch(req) {
+        receivedHeaders = {
+          proxyToken: req.headers.get('x-proxy-token'),
+          apiKey: req.headers.get('x-api-key'),
+          anthropicVersion: req.headers.get('anthropic-version'),
+          contentType: req.headers.get('content-type'),
+        };
+        return new Response(
+          'data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"连接正常"}}\n\n',
+          { headers: { 'Content-Type': 'text/event-stream' } },
+        );
+      },
+    });
+    try {
+      const home = makeHome();
+      const anthropic = {
+        ...provider('anthropic-proxy', `http://127.0.0.1:${upstream.port}`, 'anthropic-key'),
+        type: 'anthropic',
+        api: 'anthropic-messages',
+        headers: { 'X-Proxy-Token': 'proxy-secret' },
+      };
+      writeFileSync(join(home, '.omp', 'omp-switch', 'providers.json'), JSON.stringify({ providers: [anthropic] }));
+      const { baseUrl } = await startServer(home);
+      const result = await fetch(`${baseUrl}/api/test`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: anthropic.id, modelId: 'model-a' }),
+      }).then(response => response.json()) as { ok: boolean; text?: string };
+
+      expect(result).toMatchObject({ ok: true, text: '连接正常' });
+      expect(receivedHeaders).toEqual({
+        proxyToken: 'proxy-secret',
+        apiKey: 'anthropic-key',
+        anthropicVersion: '2023-06-01',
+        contentType: 'application/json',
+      });
+    } finally {
+      upstream.stop(true);
+    }
+  });
+
   test('添加模型时使用 OMP 引用解析器补齐配置并保留原始 ID', async () => {
     const catalog = Bun.serve({
       port: 0,

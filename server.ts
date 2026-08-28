@@ -304,6 +304,13 @@ function modelAuthHeaders(api: string, apiKey: string): Record<string, string> {
   if (api === 'google-generative-ai') return { 'x-goog-api-key': apiKey };
   return { Authorization: `Bearer ${apiKey}` };
 }
+function providerJsonHeaders(provider: ProviderCfg): Record<string, string> {
+  return {
+    ...modelAuthHeaders(provider.api, provider.apiKey ?? ''),
+    ...(provider.headers ?? {}),
+    'Content-Type': 'application/json',
+  };
+}
 async function fetchModels(baseUrl: string, apiKey: string | undefined, api: string, headers?: Record<string, string>): Promise<{ models: string[]; source: string }> {
   if (!apiKey) throw new Error('需要 API Key 才能拉取模型列表');
   const candidates = modelEndpointCandidates(baseUrl, api);
@@ -361,7 +368,7 @@ async function testModel(provider: ProviderCfg, modelId: string, effort: string)
     if (provider.api === 'anthropic-messages') {
       const res = await fetch(`${base}/v1/messages`, {
         method: 'POST',
-        headers: { ...modelAuthHeaders(provider.api, provider.apiKey ?? ''), 'Content-Type': 'application/json' },
+        headers: providerJsonHeaders(provider),
         body: JSON.stringify({ model: modelId, messages: [{ role: 'user', content: '请回复：连接正常。' }], max_tokens: 64, stream: true }),
         signal: ctrl.signal,
       });
@@ -392,7 +399,7 @@ async function testModel(provider: ProviderCfg, modelId: string, effort: string)
     } else if (provider.api === 'openai-responses') {
       const res = await fetch(`${base}/v1/responses`, {
         method: 'POST',
-        headers: { ...modelAuthHeaders(provider.api, provider.apiKey ?? ''), 'Content-Type': 'application/json' },
+        headers: providerJsonHeaders(provider),
         body: JSON.stringify({ model: modelId, input: '请回复：连接正常。', stream: false, max_output_tokens: 64 }),
         signal: ctrl.signal,
       });
@@ -404,7 +411,7 @@ async function testModel(provider: ProviderCfg, modelId: string, effort: string)
     } else if (provider.api === 'google-generative-ai') {
       const res = await fetch(`${base}/v1beta/models/${modelId}:generateContent?key=${encodeURIComponent(provider.apiKey ?? '')}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: providerJsonHeaders(provider),
         body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: '请回复：连接正常。' }] }], generationConfig: { maxOutputTokens: 64 } }),
         signal: ctrl.signal,
       });
@@ -424,7 +431,7 @@ async function testModel(provider: ProviderCfg, modelId: string, effort: string)
       if (effort && (model?.reasoning || model?.compat?.supportsReasoningEffort)) Object.assign(body, thinkingParams(model, effort));
       const res = await fetch(`${base}/v1/chat/completions`, {
         method: 'POST',
-        headers: { ...modelAuthHeaders(provider.api, provider.apiKey ?? ''), ...(provider.headers ?? {}), 'Content-Type': 'application/json' },
+        headers: providerJsonHeaders(provider),
         body: JSON.stringify(body),
         signal: ctrl.signal,
       });
