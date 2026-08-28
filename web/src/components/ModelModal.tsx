@@ -103,11 +103,6 @@ export function ModelModal({ model, providerId, apiType, baseUrl, onClose, onSav
       setCatalogModel(resolved);
       setLookupState('matched');
       setError('');
-      if (configTouched.current) return;
-      setName(resolved.name ?? '');
-      setCtx(resolved.contextWindow === undefined ? '' : String(resolved.contextWindow));
-      setMax(resolved.maxTokens === undefined ? '' : String(resolved.maxTokens));
-      setInputType(resolved.input?.join(',') ?? '');
       setReasoning(!!resolved.reasoning);
       setMode(resolved.thinking?.mode ?? '');
       setEfforts(resolved.thinking?.efforts ?? []);
@@ -115,6 +110,11 @@ export function ModelModal({ model, providerId, apiType, baseUrl, onClose, onSav
       setThinkingFormat(resolved.compat?.thinkingFormat ?? '');
       setReasoningContentField(resolved.compat?.reasoningContentField ?? '');
       setMaxTokensField(resolved.compat?.maxTokensField ?? '');
+      if (configTouched.current) return;
+      setName(resolved.name ?? '');
+      setCtx(resolved.contextWindow === undefined ? '' : String(resolved.contextWindow));
+      setMax(resolved.maxTokens === undefined ? '' : String(resolved.maxTokens));
+      setInputType(resolved.input?.join(',') ?? '');
     }, 350);
     return () => window.clearTimeout(timer);
   }, [id, originalId, providerId, apiType, baseUrl]);
@@ -224,10 +224,18 @@ export function ModelModal({ model, providerId, apiType, baseUrl, onClose, onSav
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <Switch checked={reasoning} onCheckedChange={value => { touch(); setReasoning(value); }} />
-            <Label>启用思考 (reasoning)</Label>
-          </div>
+          {catalog ? (
+            <div className="flex h-9 items-center gap-2 text-sm">
+              <span className={`size-2 rounded-full ${reasoning ? 'bg-emerald-500' : 'bg-muted-foreground/40'}`} />
+              <span>{reasoning ? '支持思考' : '不支持思考'}</span>
+              <span className="text-xs text-muted-foreground">由 OMP 模型目录确定</span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <Switch checked={reasoning} onCheckedChange={value => { touch(); setReasoning(value); }} />
+              <Label>支持思考 (reasoning)</Label>
+            </div>
+          )}
 
           <Separator />
           <div className="space-y-3">
