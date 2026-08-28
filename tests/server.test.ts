@@ -23,11 +23,11 @@ function reservePort() {
   return port;
 }
 
-async function startServer(home: string) {
+async function startServer(home: string, extraEnv: Record<string, string> = {}) {
   const port = reservePort();
   const child = Bun.spawn([process.execPath, 'server.ts', `--port=${port}`], {
     cwd: projectRoot,
-    env: { ...process.env, HOME: home },
+    env: { ...process.env, HOME: home, ...extraEnv },
     stdout: 'pipe',
     stderr: 'pipe',
   });
@@ -215,6 +215,114 @@ describe('配置业务闭环', () => {
     } finally {
       upstream.stop(true);
     }
+  });
+
+  test('添加模型时使用 OMP 引用解析器补齐配置并保留原始 ID', async () => {
+    const catalog = Bun.serve({
+      port: 0,
+      fetch() {
+        return Response.json({
+          anthropic: {
+            models: {
+              'claude-opus-4-7': {
+                name: 'Claude Opus 4.7',
+                tool_call: true,
+                reasoning: true,
+                limit: { context: 1000000, output: 128000 },
+                modalities: { input: ['text', 'image'] },
+                cost: { input: 3, output: 15 },
+              },
+            },
+          },
+        });
+      },
+    });
+    try {
+      const home = makeHome();
+      const { baseUrl } = await startServer(home, {
+        OMP_SWITCH_CATALOG_URL: `http://127.0.0.1:${catalog.port}/models.json`,
+      });
+      const aliasId = 'vendor/claude-opus-4-7-thinking';
+      const result = await fetch(`${baseUrl}/api/resolve-models`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ids: [aliasId, 'unknown-model'],
+          providerId: 'proxy',
+          api: 'openai-completions',
+          baseUrl: 'https://proxy.example.com/v1',
+        }),
+      }).then(response => response.json()) as {
+        ok: boolean;
+        matches: Array<{
+          id: string;
+          matched: boolean;
+          reference?: { provider: string; id: string };
+          model?: Record<string, any>;
+        }>;
+      };
+
+      expect(result.ok).toBe(true);
+      expect(result.matches[0]).toMatchObject({
+        id: aliasId,
+        matched: true,
+        reference: { provider: 'anthropic', id: 'claude-opus-4-7' },
+        model: {
+          id: aliasId,
+          contextWindow: 1000000,
+          maxTokens: 128000,
+          input: ['text', 'image'],
+          reasoning: true,
+          thinking: {
+            mode: 'effort',
+            efforts: ['low', 'medium', 'high', 'xhigh', 'max'],
+            requiresEffort: true,
+          },
+          compat: { thinkingFormat: 'openai', maxTokensField: 'max_completion_tokens' },
+        },
+      });
+      expect(result.matches[1]).toEqual({ id: 'unknown-model', matched: false });
+
+      const resolvedProvider = provider('proxy', 'https://proxy.example.com/v1');
+      resolvedProvider.models = [{
+        ...result.matches[0].model,
+        catalog: {
+          source: 'OMP 在线模型目录',
+          referenceProvider: 'anthropic',
+          referenceId: 'claude-opus-4-7',
+        },
+      } as any];
+      const saved = await fetch(`${baseUrl}/api/providers`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(resolvedProvider),
+      }).then(response => response.json()) as { ok: boolean };
+      expect(saved.ok).toBe(true);
+      const exported = await fetch(`${baseUrl}/api/export`).then(response => response.json()) as { yaml: string };
+      const parsed = parseYaml(exported.yaml);
+      expect(parsed.providers.proxy.models[0].id).toBe(aliasId);
+      expect(parsed.providers.proxy.models[0].thinking.efforts).toEqual(['low', 'medium', 'high', 'xhigh', 'max']);
+      expect(parsed.providers.proxy.models[0].catalog).toBeUndefined();
+    } finally {
+      catalog.stop(true);
+    }
+  });
+
+  test('OMP 未匹配时允许仅保存模型 ID', async () => {
+    const home = makeHome();
+    const { baseUrl } = await startServer(home);
+    const minimal = provider('minimal', 'https://minimal.example.com/v1');
+    minimal.models = [{ id: 'private-model-id' }] as typeof minimal.models;
+
+    const result = await fetch(`${baseUrl}/api/providers`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(minimal),
+    }).then(response => response.json()) as { ok: boolean };
+    expect(result.ok).toBe(true);
+
+    const exported = await fetch(`${baseUrl}/api/export`).then(response => response.json()) as { yaml: string };
+    expect(parseYaml(exported.yaml).providers.minimal.models).toEqual([{ id: 'private-model-id' }]);
   });
 
   test('删除供应商支持编码后的特殊 ID', async () => {

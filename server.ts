@@ -20,6 +20,7 @@ import { dirname, join } from 'path';
 import { homedir } from 'os';
 import { parse as yamlParse, stringify as yamlStringify } from 'yaml';
 import { FILES as EMBEDDED } from './embedded';
+import { resolveCatalogModels, type ResolvedCompat, type ResolvedThinking } from './model-catalog';
 
 const HOME = homedir();
 // 数据目录（供应商配置、Key），固定放在 ~/.omp/omp-switch
@@ -31,16 +32,8 @@ const MODELS_YML = join(HOME, '.omp', 'agent', 'models.yml');
 const PORT = parseInt(process.argv.find((a) => a.startsWith('--port='))?.split('=')[1] ?? process.env.OMP_SWITCHER_PORT ?? '8642', 10);
 
 // ---------- 类型 ----------
-interface ThinkingCfg { mode?: string; minLevel?: string; maxLevel?: string }
-interface ModelCompat {
-  supportsReasoningEffort?: boolean;
-  maxTokensField?: 'max_tokens' | 'max_completion_tokens';
-  thinkingFormat?: 'openai' | 'openrouter' | 'zai' | 'qwen' | 'qwen-chat-template';
-  reasoningContentField?: 'reasoning_content' | 'reasoning' | 'reasoning_text';
-  reasoningEffortMap?: Record<string, string>;
-  requiresReasoningContentForToolCalls?: boolean;
-  requiresThinkingAsText?: boolean;
-}
+interface ThinkingCfg extends Partial<ResolvedThinking> { minLevel?: string; maxLevel?: string }
+interface ModelCompat extends ResolvedCompat {}
 interface ModelCfg {
   id: string;
   name?: string;
@@ -343,13 +336,14 @@ async function fetchModels(baseUrl: string, apiKey: string | undefined, api: str
 }
 
 // ---------- 测试(流式首字延迟) ----------
-function thinkingParams(compat: ModelCompat | undefined, effort: string): Record<string, unknown> {
-  const format = compat?.thinkingFormat ?? 'openai';
-  const mapped = compat?.reasoningEffortMap?.[effort] ?? effort;
+function thinkingParams(model: ModelCfg | undefined, effort: string): Record<string, unknown> {
+  const format = model?.compat?.thinkingFormat ?? 'openai';
+  const mapped = model?.thinking?.effortMap?.[effort] ?? model?.compat?.reasoningEffortMap?.[effort] ?? effort;
   if (format === 'openrouter') return { reasoning: { effort: mapped } };
+  if (format === 'kimi') return { thinking: { type: 'enabled', effort: mapped } };
   if (format === 'zai') return { thinking: { type: 'enabled' } };
   if (format === 'qwen') return { enable_thinking: true };
-  if (format === 'qwen-chat-template') return { chat_template_kwargs: { enable_thinking: true } };
+  if (format === 'qwen-chat-template' || format === 'chat-template') return { chat_template_kwargs: { enable_thinking: true } };
   return { reasoning_effort: mapped };
 }
 
@@ -427,7 +421,7 @@ async function testModel(provider: ProviderCfg, modelId: string, effort: string)
       };
       if (model?.compat?.maxTokensField === 'max_tokens') body.max_tokens = 64;
       else body.max_completion_tokens = 64;
-      if (effort && (model?.reasoning || model?.compat?.supportsReasoningEffort)) Object.assign(body, thinkingParams(model?.compat, effort));
+      if (effort && (model?.reasoning || model?.compat?.supportsReasoningEffort)) Object.assign(body, thinkingParams(model, effort));
       const res = await fetch(`${base}/v1/chat/completions`, {
         method: 'POST',
         headers: { ...modelAuthHeaders(provider.api, provider.apiKey ?? ''), ...(provider.headers ?? {}), 'Content-Type': 'application/json' },
@@ -485,10 +479,8 @@ function validateProvider(p: Partial<ProviderCfg>): string | null {
   if (!p.baseUrl?.trim() || !/^https?:\/\//i.test(p.baseUrl.trim())) return 'baseUrl 必须是 http(s) 地址';
   if (!p.models?.length) return '至少需要一个模型';
   if (p.models.some((m) => !m.id?.trim())) return '模型 id 不能为空';
-  if (p.models.some((m) => !m.contextWindow)) return '模型缺少 contextWindow';
-  if (p.models.some((m) => !m.maxTokens)) return '模型缺少 maxTokens';
-  if (p.models.some((m) => !Number.isInteger(m.contextWindow) || m.contextWindow! <= 0)) return 'contextWindow 必须是正整数';
-  if (p.models.some((m) => !Number.isInteger(m.maxTokens) || m.maxTokens! <= 0)) return 'maxTokens 必须是正整数';
+  if (p.models.some((m) => m.contextWindow !== undefined && (!Number.isInteger(m.contextWindow) || m.contextWindow <= 0))) return 'contextWindow 必须是正整数';
+  if (p.models.some((m) => m.maxTokens !== undefined && (!Number.isInteger(m.maxTokens) || m.maxTokens <= 0))) return 'maxTokens 必须是正整数';
   if (new Set(p.models.map((m) => m.id.trim())).size !== p.models.length) return '模型 id 不能重复';
   if (p.headers && (Array.isArray(p.headers) || Object.values(p.headers).some((value) => typeof value !== 'string'))) return 'headers 必须是字符串键值对';
   return null;
@@ -637,6 +629,23 @@ const server = Bun.serve({
         return json({ ok: true, ...result });
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : String(e) }, 400);
+      }
+    }
+
+    if (p === '/api/resolve-models' && req.method === 'POST') {
+      const { ids, providerId, api, baseUrl } = (await req.json()) as {
+        ids?: string[];
+        providerId?: string;
+        api?: string;
+        baseUrl?: string;
+      };
+      if (!Array.isArray(ids) || ids.some(id => typeof id !== 'string')) return json({ error: 'ids 必须是字符串数组' }, 400);
+      if (!api) return json({ error: '请先选择 API 协议' }, 400);
+      try {
+        const matches = await resolveCatalogModels({ ids, providerId: providerId?.trim() || 'custom', api, baseUrl: baseUrl?.trim() || '' });
+        return json({ ok: true, source: 'OMP 在线模型目录', matches });
+      } catch (e) {
+        return json({ error: `OMP 模型数据获取失败：${e instanceof Error ? e.message : String(e)}` }, 502);
       }
     }
 

@@ -1,11 +1,22 @@
 // API 客户端与类型定义
-export interface ThinkingCfg { mode?: string; minLevel?: string; maxLevel?: string }
+export interface ThinkingCfg {
+  mode?: string;
+  efforts?: string[];
+  minLevel?: string;
+  maxLevel?: string;
+  defaultLevel?: string;
+  effortMap?: Record<string, string>;
+  supportsDisplay?: boolean;
+  suppressWhenOff?: boolean;
+  requiresEffort?: boolean;
+}
 export interface ModelCompat {
   supportsReasoningEffort?: boolean;
   maxTokensField?: 'max_tokens' | 'max_completion_tokens';
   thinkingFormat?: string;
   reasoningContentField?: string;
   reasoningEffortMap?: Record<string, string>;
+  reasoningDisableMode?: string;
   requiresReasoningContentForToolCalls?: boolean;
   requiresThinkingAsText?: boolean;
 }
@@ -19,6 +30,7 @@ export interface ModelCfg {
   maxTokens?: number;
   compat?: ModelCompat;
   limitsEstimated?: boolean;
+  catalog?: { source: string; referenceProvider: string; referenceId: string };
   extra?: Record<string, unknown>;
 }
 export interface ProviderCfg {
@@ -49,6 +61,13 @@ export interface State {
   apiOptions: Record<string, { label: string; defaultBaseUrl: string; keyHeader: string }>;
   current: { exists: boolean; providers: ProviderCfg[]; enabledCount: number; hasUnappliedChanges: boolean };
   backups: BackupInfo[];
+}
+
+export interface ModelCatalogMatch {
+  id: string;
+  matched: boolean;
+  reference?: { provider: string; id: string };
+  model?: ModelCfg;
 }
 
 export const TYPES = [
@@ -92,20 +111,14 @@ export const api = {
   restore: (name: string) => rpc<{ ok: boolean; error?: string }>('/api/restore', 'POST', { name }),
   fetchModels: (baseUrl: string, apiKey: string | undefined, api: string, headers?: Record<string, string>, providerId?: string) =>
     rpc<{ ok: boolean; models?: string[]; source?: string; error?: string }>('/api/fetch-models', 'POST', { baseUrl, apiKey, api, headers, providerId }),
+  resolveModels: (ids: string[], providerId: string, apiType: string, baseUrl: string) =>
+    rpc<{ ok: boolean; source?: string; matches?: ModelCatalogMatch[]; error?: string }>('/api/resolve-models', 'POST', {
+      ids, providerId, api: apiType, baseUrl,
+    }),
   test: (id: string, modelId: string, effort: string) =>
     rpc<{ ok: boolean; streamed?: boolean; totalMs?: number; ttftMs?: number | null; firstByteMs?: number | null; text?: string; usage?: unknown; status?: number; error?: string }>('/api/test', 'POST', { id, modelId, effort }),
   importFromCurrent: () => rpc<{ ok: boolean; imported?: string[]; error?: string }>('/api/import', 'POST'),
   exportYaml: () => rpc<{ ok: boolean; yaml?: string }>('/api/export'),
 };
 
-export function defaultModel(id: string, providerType?: string): ModelCfg {
-  return {
-    id,
-    reasoning: true,
-    contextWindow: providerType === 'anthropic' ? 1000000 : 250000,
-    maxTokens: 128000,
-    limitsEstimated: true,
-    thinking: { mode: 'effort', minLevel: 'low', maxLevel: 'high' },
-    compat: { supportsReasoningEffort: true, maxTokensField: providerType === 'anthropic' ? 'max_tokens' : 'max_completion_tokens' },
-  };
-}
+export function defaultModel(id: string): ModelCfg { return { id }; }

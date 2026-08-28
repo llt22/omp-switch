@@ -21,7 +21,7 @@ interface Props {
   apiType: string;
   headers?: Record<string, string>;
   existing: Set<string>;
-  onAdd: (ids: string[]) => void;
+  onAdd: (ids: string[]) => void | Promise<void>;
   providerId?: string;
 }
 
@@ -29,6 +29,7 @@ export function FetchModelsDialog({ open, onClose, baseUrl, apiKey, apiType, hea
   const [models, setModels] = useState<string[]>([]);
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
+  const [adding, setAdding] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -56,6 +57,14 @@ export function FetchModelsDialog({ open, onClose, baseUrl, apiKey, apiType, hea
     const next = new Set(picked);
     on ? next.add(m) : next.delete(m);
     setPicked(next);
+  };
+  const addSelected = async () => {
+    setAdding(true);
+    try {
+      await onAdd(models.filter(m => picked.has(m)));
+    } finally {
+      setAdding(false);
+    }
   };
 
   return (
@@ -85,7 +94,7 @@ export function FetchModelsDialog({ open, onClose, baseUrl, apiKey, apiType, hea
         <DialogFooter>
           <span className="mr-auto text-xs text-primary">已选 {picked.size}</span>
           <Button variant="outline" onClick={onClose}>取消</Button>
-          <Button disabled={!picked.size} onClick={() => onAdd(models.filter(m => picked.has(m)))}>添加选中</Button>
+          <Button disabled={!picked.size || adding} onClick={addSelected}>{adding ? '正在匹配 OMP 配置…' : '添加选中'}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

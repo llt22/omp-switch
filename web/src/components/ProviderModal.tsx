@@ -263,7 +263,9 @@ export function ProviderModal({ open, onClose, editing, duplicate }: Props) {
       {modelModalIdx !== null && (
         <ModelModal
           model={models[modelModalIdx]}
-          providerType={type}
+          providerId={pid.trim() || editing?.id || 'custom'}
+          apiType={apiType}
+          baseUrl={baseUrl}
           onClose={() => setModelModalIdx(null)}
           onSave={(m) => {
             const next = [...models];
@@ -283,9 +285,27 @@ export function ProviderModal({ open, onClose, editing, duplicate }: Props) {
         headers={(() => { try { return headersText.trim() ? JSON.parse(headersText) : undefined; } catch { return undefined; } })()}
         existing={new Set(models.map(m => m.id))}
         providerId={editing?.id}
-        onAdd={(ids) => {
+        onAdd={async (ids) => {
           const have = new Set(models.map(m => m.id));
-          setModels([...models, ...ids.filter(id => !have.has(id)).map(id => defaultModel(id, type))]);
+          const addedIds = ids.filter(id => !have.has(id));
+          const resolved = await api.resolveModels(addedIds, pid.trim() || editing?.id || 'custom', apiType, baseUrl);
+          const matches = new Map(resolved.matches?.map(match => [match.id, match]));
+          const added = addedIds.map(id => {
+            const match = matches.get(id);
+            return match?.matched && match.model && match.reference
+              ? {
+                  ...match.model,
+                  catalog: {
+                    source: resolved.source ?? 'OMP 在线模型目录',
+                    referenceProvider: match.reference.provider,
+                    referenceId: match.reference.id,
+                  },
+                }
+              : defaultModel(id);
+          });
+          setModels([...models, ...added]);
+          if (!resolved.ok) setError(resolved.error || 'OMP 模型数据获取失败');
+          else setError('');
           setShowFetch(false);
         }}
       />

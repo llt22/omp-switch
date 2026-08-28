@@ -7,6 +7,7 @@
     "check:rust": "cargo check --manifest-path tauri/Cargo.toml"
   },
   "dependencies": {
+    "@oh-my-pi/pi-catalog": "18.0.8",
     "yaml": "^2.5.0"
   },
   "devDependencies": {

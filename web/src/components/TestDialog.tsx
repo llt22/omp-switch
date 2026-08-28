@@ -4,6 +4,16 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { api, type ProviderCfg } from '@/lib/api';
 
+const LEVELS = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
+
+function thinkingEfforts(provider: ProviderCfg, modelId: string): string[] {
+  const model = provider.models.find(item => item.id === modelId);
+  if (model?.thinking?.efforts?.length) return model.thinking.efforts;
+  const min = LEVELS.indexOf(model?.thinking?.minLevel ?? '');
+  const max = LEVELS.indexOf(model?.thinking?.maxLevel ?? '');
+  return min >= 0 && max >= min ? LEVELS.slice(min, max + 1) : [];
+}
+
 interface Props {
   provider: ProviderCfg;
   open: boolean;
@@ -17,13 +27,21 @@ export function TestDialog({ provider, open, onClose }: Props) {
   const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
   const selectedModel = provider.models.find(model => model.id === modelId);
   const thinkingFormat = selectedModel?.compat?.thinkingFormat ?? 'openai';
+  const effortOptions = thinkingEfforts(provider, modelId);
   const supportsEffort = provider.api === 'openai-completions'
     && !!selectedModel?.reasoning
+    && effortOptions.length > 0
     && (thinkingFormat === 'openai' || thinkingFormat === 'openrouter');
 
   useEffect(() => {
     if (open) { setModelId(provider.models[0]?.id ?? ''); setResult(null); }
   }, [open, provider]);
+
+  useEffect(() => {
+    if (effortOptions.length && !effortOptions.includes(effort)) {
+      setEffort(effortOptions.includes('medium') ? 'medium' : effortOptions[0]);
+    }
+  }, [modelId, effortOptions.join(',')]);
 
   const run = async () => {
     setRunning(true);
@@ -60,7 +78,7 @@ export function TestDialog({ provider, open, onClose }: Props) {
             <Select value={effort} onValueChange={setEffort}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
-                {['minimal', 'low', 'medium', 'high', 'xhigh', 'max'].map(l => <SelectItem key={l} value={l}>{l}</SelectItem>)}
+                {effortOptions.map(level => <SelectItem key={level} value={level}>{level}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>}
