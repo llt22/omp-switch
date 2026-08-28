@@ -234,6 +234,42 @@ describe('配置业务闭环', () => {
               },
             },
           },
+          zai: {
+            models: {
+              'glm-5.2': {
+                name: 'GLM-5.2',
+                tool_call: true,
+                reasoning: true,
+                limit: { context: 1000000, output: 131072 },
+                modalities: { input: ['text'] },
+                cost: { input: 1, output: 3.2 },
+              },
+            },
+          },
+          wandb: {
+            models: {
+              'zai-org/GLM-5.2': {
+                name: 'GLM-5.2',
+                tool_call: true,
+                reasoning: true,
+                limit: { context: 1048576, output: 1048576 },
+                modalities: { input: ['text'] },
+                cost: { input: 1, output: 3.2 },
+              },
+            },
+          },
+          'ollama-cloud': {
+            models: {
+              'deepseek-v4-flash:0731': {
+                name: 'DeepSeek V4 Flash',
+                tool_call: true,
+                reasoning: true,
+                limit: { context: 1048576, output: 1048576 },
+                modalities: { input: ['text'] },
+                cost: { input: 0, output: 0 },
+              },
+            },
+          },
         });
       },
     });
@@ -282,6 +318,30 @@ describe('配置业务闭环', () => {
         },
       });
       expect(result.matches[1]).toEqual({ id: 'unknown-model', matched: false });
+
+      const preferred = await fetch(`${baseUrl}/api/resolve-models`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ids: ['zai-org/GLM-5.2', 'deepseek-v4-flash:0731'],
+          providerId: 'proxy',
+          api: 'openai-completions',
+          baseUrl: 'https://proxy.example.com/v1',
+        }),
+      }).then(response => response.json()) as typeof result;
+      expect(preferred.matches[0]).toMatchObject({
+        reference: { provider: 'zai', id: 'glm-5.2' },
+        model: {
+          id: 'zai-org/GLM-5.2',
+          contextWindow: 1000000,
+          maxTokens: 131072,
+          thinking: { efforts: ['high', 'max'] },
+        },
+      });
+      expect(preferred.matches[1]).toMatchObject({
+        reference: { provider: 'ollama-cloud', id: 'deepseek-v4-flash:0731' },
+        model: { id: 'deepseek-v4-flash:0731', contextWindow: 1048576, maxTokens: 1048576 },
+      });
 
       const resolvedProvider = provider('proxy', 'https://proxy.example.com/v1');
       resolvedProvider.models = [{

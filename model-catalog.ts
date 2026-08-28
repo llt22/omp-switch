@@ -1,5 +1,6 @@
 import { buildModel } from '@oh-my-pi/pi-catalog/build';
 import { buildModelReferenceIndex, inheritReferenceThinking, resolveModelReference } from '@oh-my-pi/pi-catalog/identity';
+import { modelFamilyToken } from '@oh-my-pi/pi-catalog/identity/family';
 import {
   fetchWellKnownModels,
   mapModelsDevToModels,
@@ -53,14 +54,33 @@ export interface ResolveCatalogRequest {
 }
 
 type ReferenceIndex = ReturnType<typeof buildModelReferenceIndex>;
+interface CatalogIndexes {
+  all: ReferenceIndex;
+  officialByFamily: Map<string, ReferenceIndex>;
+}
+
+const OFFICIAL_PROVIDERS_BY_FAMILY: Record<string, ReadonlySet<string>> = {
+  anthropic: new Set(['anthropic']),
+  openai: new Set(['openai']),
+  gemini: new Set(['google', 'google-vertex']),
+  gemma: new Set(['google', 'google-vertex']),
+  grok: new Set(['xai']),
+  deepseek: new Set(['deepseek']),
+  kimi: new Set(['moonshot']),
+  qwen: new Set(['qwen-portal', 'alibaba-coding-plan']),
+  minimax: new Set(['minimax', 'minimax-code']),
+  mimo: new Set(['xiaomi']),
+  glm: new Set(['zai']),
+  'gpt-oss': new Set(['openai']),
+};
 
 const CATALOG_CACHE_TTL_MS = 10 * 60 * 1000;
 const catalogUrlOverride = process.env.OMP_SWITCH_CATALOG_URL?.trim();
 const catalogFetch = catalogUrlOverride
   ? ((_input: string | URL | Request, init?: RequestInit) => fetch(catalogUrlOverride, init))
   : undefined;
-let cachedIndex: { value: ReferenceIndex; expiresAt: number } | undefined;
-let indexPromise: Promise<ReferenceIndex> | undefined;
+let cachedIndexes: { value: CatalogIndexes; expiresAt: number } | undefined;
+let indexesPromise: Promise<CatalogIndexes> | undefined;
 
 function compactRecord<T extends Record<string, unknown>>(record: T): Partial<T> | undefined {
   const entries = Object.entries(record).filter(([, value]) => {
@@ -102,25 +122,39 @@ function toCompat(model: Model<Api>): ResolvedCompat | undefined {
   }) as ResolvedCompat | undefined;
 }
 
-async function loadReferenceIndex(): Promise<ReferenceIndex> {
+async function loadCatalogIndexes(): Promise<CatalogIndexes> {
   const now = Date.now();
-  if (cachedIndex && cachedIndex.expiresAt > now) return cachedIndex.value;
-  if (indexPromise) return indexPromise;
+  if (cachedIndexes && cachedIndexes.expiresAt > now) return cachedIndexes.value;
+  if (indexesPromise) return indexesPromise;
 
-  indexPromise = (async () => {
+  indexesPromise = (async () => {
     const payload = await fetchWellKnownModels(catalogFetch);
     if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
       throw new Error('OMP 在线模型目录返回了无效数据');
     }
     const specs = mapModelsDevToModels(payload as Record<string, unknown>, MODELS_DEV_PROVIDER_DESCRIPTORS);
     if (!specs.length) throw new Error('OMP 在线模型目录中没有可用模型');
-    const index = buildModelReferenceIndex(specs.map(spec => buildModel(spec)));
-    cachedIndex = { value: index, expiresAt: Date.now() + CATALOG_CACHE_TTL_MS };
-    return index;
+    const models = specs.map(spec => buildModel(spec));
+    const officialByFamily = new Map<string, ReferenceIndex>();
+    for (const [family, providers] of Object.entries(OFFICIAL_PROVIDERS_BY_FAMILY)) {
+      officialByFamily.set(family, buildModelReferenceIndex(models.filter(model => providers.has(model.provider))));
+    }
+    const indexes = { all: buildModelReferenceIndex(models), officialByFamily };
+    cachedIndexes = { value: indexes, expiresAt: Date.now() + CATALOG_CACHE_TTL_MS };
+    return indexes;
   })().finally(() => {
-    indexPromise = undefined;
+    indexesPromise = undefined;
   });
-  return indexPromise;
+  return indexesPromise;
+}
+
+function resolvePreferredReference(id: string, indexes: CatalogIndexes): Model<Api> | undefined {
+  const fallback = resolveModelReference(id, indexes.all);
+  const family = modelFamilyToken(id) || (fallback ? modelFamilyToken(fallback.id) : '');
+  const officialIndex = family ? indexes.officialByFamily.get(family) : undefined;
+  return (officialIndex && (resolveModelReference(id, officialIndex)
+    ?? (fallback ? resolveModelReference(fallback.id, officialIndex) : undefined)))
+    ?? fallback;
 }
 
 export function resolveCatalogModel(
@@ -128,10 +162,10 @@ export function resolveCatalogModel(
   providerId: string,
   api: string,
   baseUrl: string,
-  index: ReferenceIndex,
+  indexes: CatalogIndexes,
 ): ModelCatalogMatch {
   const normalizedId = id.trim();
-  const reference = resolveModelReference(normalizedId, index);
+  const reference = resolvePreferredReference(normalizedId, indexes);
   if (!reference) return { id: normalizedId, matched: false };
 
   const resolved = buildModel({
@@ -169,6 +203,6 @@ export function resolveCatalogModel(
 export async function resolveCatalogModels(request: ResolveCatalogRequest): Promise<ModelCatalogMatch[]> {
   const ids = [...new Set(request.ids.map(id => id.trim()).filter(Boolean))];
   if (!ids.length) return [];
-  const index = await loadReferenceIndex();
-  return ids.map(id => resolveCatalogModel(id, request.providerId, request.api, request.baseUrl, index));
+  const indexes = await loadCatalogIndexes();
+  return ids.map(id => resolveCatalogModel(id, request.providerId, request.api, request.baseUrl, indexes));
 }
