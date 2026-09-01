@@ -86,8 +86,8 @@ function atomicWriteFile(file: string, content: string, mode = 0o600) {
   const tempFile = `${file}.${process.pid}.${Date.now()}.tmp`;
   let fd: number | null = null;
   try {
-    writeFileSync(tempFile, content, { mode });
-    fd = openSync(tempFile, 'r');
+    fd = openSync(tempFile, 'wx', mode);
+    writeFileSync(fd, content, 'utf8');
     fsyncSync(fd);
     closeSync(fd);
     fd = null;
