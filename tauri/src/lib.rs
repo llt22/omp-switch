@@ -1,9 +1,20 @@
 use std::sync::{Arc, Mutex};
 use tauri::{
     menu::{Menu, MenuItem},
-    tray::TrayIconBuilder,
-    Manager,
+    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
+    AppHandle, Manager,
 };
+
+fn show_main_window(app: &AppHandle) {
+    #[cfg(target_os = "macos")]
+    let _ = app.show();
+
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
+        let _ = window.unminimize();
+        let _ = window.set_focus();
+    }
+}
 
 /// 清理异常退出后仍占用固定端口的旧 sidecar，不影响其他程序。
 #[cfg(all(not(debug_assertions), unix))]
@@ -112,6 +123,9 @@ pub fn run() {
     let server_child_for_setup = Arc::clone(&server_child);
     let app = match tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            show_main_window(app);
+        }))
         .setup(move |app| {
             #[cfg(not(debug_assertions))]
             {
@@ -134,15 +148,21 @@ pub fn run() {
                 .menu(&menu)
                 .show_menu_on_left_click(false)
                 .on_menu_event(|app, event| match event.id.as_ref() {
-                    "show" => {
-                        if let Some(w) = app.get_webview_window("main") {
-                            let _ = w.show();
-                            let _ = w.unminimize();
-                            let _ = w.set_focus();
-                        }
-                    }
+                    "show" => show_main_window(app),
                     "quit" => app.exit(0),
                     _ => {}
+                })
+                .on_tray_icon_event(|tray, event| {
+                    if matches!(
+                        event,
+                        TrayIconEvent::Click {
+                            button: MouseButton::Left,
+                            button_state: MouseButtonState::Up,
+                            ..
+                        }
+                    ) {
+                        show_main_window(tray.app_handle());
+                    }
                 })
                 .build(app)?;
 
@@ -164,14 +184,22 @@ pub fn run() {
             {
                 let msg = format!("omp-switch 启动失败：\n{e}").replace('"', "\\\"");
                 let _ = std::process::Command::new("osascript")
-                    .args(["-e", &format!("display alert \"omp-switch\" message \"{msg}\" as critical")])
+                    .args([
+                        "-e",
+                        &format!("display alert \"omp-switch\" message \"{msg}\" as critical"),
+                    ])
                     .output();
             }
             std::process::exit(1);
         }
     };
 
-    app.run(move |_app_handle, event| {
+    app.run(move |app_handle, event| {
+        #[cfg(target_os = "macos")]
+        if matches!(event, tauri::RunEvent::Reopen { .. }) {
+            show_main_window(app_handle);
+        }
+
         if matches!(
             event,
             tauri::RunEvent::Exit | tauri::RunEvent::ExitRequested { .. }
