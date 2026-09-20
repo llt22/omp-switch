@@ -123,6 +123,30 @@ describe('配置业务闭环', () => {
     expect(statSync(join(home, '.omp', 'omp-switch', 'providers.json')).mode & 0o777).toBe(0o600);
   });
 
+  test('当前配置缺少 baseUrl 时仍能加载状态', async () => {
+    const home = makeHome();
+    writeFileSync(join(home, '.omp', 'agent', 'models.yml'), `providers:
+  builtin:
+    api: openai-completions
+    models:
+      - id: model-a
+`);
+    const { baseUrl } = await startServer(home);
+
+    const response = await fetch(`${baseUrl}/api/state`);
+    const state = await response.json() as {
+      providers: { id: string; type: string; api: string; baseUrl: string }[];
+    };
+
+    expect(response.status).toBe(200);
+    expect(state.providers[0]).toMatchObject({
+      id: 'builtin',
+      type: 'openai-compatible',
+      api: 'openai-completions',
+      baseUrl: '',
+    });
+  });
+
   test('恢复备份后同步编辑区，下一次应用不会撤销恢复', async () => {
     const home = makeHome();
     writeFileSync(join(home, '.omp', 'agent', 'models.yml'), `providers:

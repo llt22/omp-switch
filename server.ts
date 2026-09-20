@@ -176,14 +176,16 @@ function yamlToProviders(yaml: string): ProviderCfg[] {
   const now = Date.now();
   return Object.entries(providers).map(([id, cfg]) => {
     const models = (cfg.models as Record<string, unknown>[] | undefined) ?? [];
+    const api = typeof cfg.api === 'string' ? cfg.api : 'openai-completions';
+    const baseUrl = typeof cfg.baseUrl === 'string' ? cfg.baseUrl : '';
     const providerKnown = new Set(['name', 'baseUrl', 'api', 'apiKey', 'authHeader', 'headers', 'models']);
     const extra = Object.fromEntries(Object.entries(cfg).filter(([key]) => !providerKnown.has(key)));
     return {
       id,
       name: (cfg.name as string) ?? id,
-      type: detectType(cfg.api as string | undefined, cfg.baseUrl as string),
-      api: (cfg.api as string) ?? 'openai-completions',
-      baseUrl: (cfg.baseUrl as string) ?? '',
+      type: detectType(api, baseUrl),
+      api,
+      baseUrl,
       apiKey: cfg.apiKey as string | undefined,
       authHeader: cfg.authHeader as boolean | undefined,
       headers: cfg.headers as Record<string, string> | undefined,
