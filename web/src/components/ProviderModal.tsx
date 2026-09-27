@@ -33,6 +33,7 @@ export function ProviderModal({ open, onClose, editing, duplicate }: Props) {
   const [apiType, setApiType] = useState('openai-completions');
   const [authHeader, setAuthHeader] = useState(true);
   const [headersText, setHeadersText] = useState('');
+  const [longCache, setLongCache] = useState(false);
   const [models, setModels] = useState<ModelCfg[]>([]);
   const [error, setError] = useState('');
   const [showAdv, setShowAdv] = useState(false);
@@ -54,6 +55,7 @@ export function ProviderModal({ open, onClose, editing, duplicate }: Props) {
       setAuthHeader(editing.authHeader ?? def.auth);
       setHeadersText(editing.headers && Object.keys(editing.headers).length ? JSON.stringify(editing.headers, null, 2) : '');
       setModels(JSON.parse(JSON.stringify(editing.models)));
+      setLongCache(readLongCache(editing));
     } else if (duplicate) {
       const def = TYPES.find(t => t.type === duplicate.type)!;
       const nextId = `${duplicate.id}-copy`;
@@ -67,6 +69,7 @@ export function ProviderModal({ open, onClose, editing, duplicate }: Props) {
       setAuthHeader(duplicate.authHeader ?? def.auth);
       setHeadersText(duplicate.headers && Object.keys(duplicate.headers).length ? JSON.stringify(duplicate.headers, null, 2) : '');
       setModels(JSON.parse(JSON.stringify(duplicate.models)));
+      setLongCache(readLongCache(duplicate));
     } else {
       const def = TYPES.find(t => t.type === 'openai-compatible')!;
       setType('openai-compatible');
@@ -79,6 +82,7 @@ export function ProviderModal({ open, onClose, editing, duplicate }: Props) {
       setAuthHeader(def.auth);
       setHeadersText('');
       setModels([]);
+      setLongCache(false);
     }
     setError('');
     setShowAdv(false);
@@ -121,6 +125,7 @@ export function ProviderModal({ open, onClose, editing, duplicate }: Props) {
       const r = await api.saveProvider({
         id, name: displayName, type, api: apiType, baseUrl: baseUrl.trim(),
         apiKey: apiKey.trim() || undefined, authHeader, headers, models, enabled: editing?.enabled ?? true,
+        extra: withLongCache((editing ?? duplicate)?.extra, apiType === 'anthropic-messages' && longCache),
       });
       if (r.ok) { toast(editing ? '已保存到编辑区' : '已添加到编辑区'); onClose(); await refresh(); }
       else setError(r.error || '保存失败');
@@ -244,6 +249,17 @@ export function ProviderModal({ open, onClose, editing, duplicate }: Props) {
                 <Switch checked={authHeader} onCheckedChange={setAuthHeader} />
                 <Label>注入 Authorization: Bearer 头</Label>
               </div>
+              {apiType === 'anthropic-messages' && (
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <Switch checked={longCache} onCheckedChange={setLongCache} />
+                    <Label>支持 1 小时提示缓存</Label>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    omp 只对官方地址默认开启。中转站确认透传 cache_control ttl 后再打开，并在 omp 中设置 providers.cacheRetention: long 才会生效。
+                  </p>
+                </div>
+              )}
               <div className="space-y-1.5">
                 <Label>自定义 Headers（JSON）</Label>
                 <Textarea value={headersText} onChange={e => setHeadersText(e.target.value)} rows={2} placeholder='{"X-Custom":"value"}' className="font-mono text-xs" />
@@ -311,4 +327,18 @@ export function ProviderModal({ open, onClose, editing, duplicate }: Props) {
       />
     </>
   );
+}
+
+// omp 仅对官方 Anthropic 地址默认开启 1h 缓存，自定义地址需在供应商级 compat 显式声明
+function readLongCache(p: ProviderCfg): boolean {
+  const compat = p.extra?.compat as Record<string, unknown> | undefined;
+  return compat?.supportsLongCacheRetention === true;
+}
+
+function withLongCache(extra: Record<string, unknown> | undefined, enabled: boolean): Record<string, unknown> {
+  const { compat: rawCompat, ...rest } = extra ?? {};
+  const compat = { ...(rawCompat as Record<string, unknown> | undefined) };
+  if (enabled) compat.supportsLongCacheRetention = true;
+  else delete compat.supportsLongCacheRetention;
+  return Object.keys(compat).length ? { ...rest, compat } : rest;
 }

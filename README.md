@@ -28,6 +28,7 @@ omp-switch 把这些变成可视化操作：**在编辑区选择下次生效的�
 - **类型驱动添加**：OpenAI 兼容 / Claude / OpenAI 官方 / Gemini 四种预设，自动预填 Base URL 与 API 协议
 - **拉取模型列表**：自动从 `/v1/models` 拉取（含候选端点回退），复选框勾选添加，已配置模型自动预勾选；编辑已有供应商时直接使用服务端存储的 Key，无需重复输入
 - **模型配置**：上下文窗口、最大输出、思考设置（模式/最低/最高级别）、**思考级别映射**（omp 内部级别 → 供应商实际值，如 GLM 的 `minimal → none`）、compat 高级配置
+- **1 小时提示缓存**：Anthropic 协议供应商可在高级设置中开启，写入供应商级 `compat.supportsLongCacheRetention`（omp 只对官方地址默认开启）；需配合 omp 的 `providers.cacheRetention: long`
 - **连通性测试**：按协议（chat/completions / messages / responses / generateContent）发送真实请求；流式协议显示首字延迟 TTFT，非流式协议显示响应耗时
 - **应用与恢复**：一键写入 models.yml，应用或恢复前自动保存当前版本（保留最近 10 份）；恢复时同步编辑区，避免下次应用覆盖恢复结果
 - **导入导出**：从当前 models.yml 导入、导出 YAML
